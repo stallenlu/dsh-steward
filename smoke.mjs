@@ -1376,6 +1376,57 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check("washes and rings derive from an accent", mixUses >= 6, String(mixUses));
   check("the only saturated tokens are the six accents", /accentStability/.test(src) && /accentInfo/.test(src));
 }
+
+// — v0.9.13: 面板自己的路由没挂上时，不许只说「HTTP 404」 —
+{
+  // 真机形态：改了插件源码触发宿主热重载，旧 fiber 被销毁、新 fiber 的路由
+  // 没接上，面板只剩一行「读取失败: HTTP 404」。用户无法判断这是接口没挂、
+  // 还是请求本身出错。这一组钉住三件事：认得出来、说得出怎么办、只重试一次。
+  const clientSrc = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  const callBody = clientSrc.slice(clientSrc.indexOf('async function call('), clientSrc.indexOf('function PanelIcon'));
+
+  check('a 404 on our own route is distinguished from a plain HTTP failure',
+    /response\.status === 404/.test(callBody) && /接口没有挂上/.test(callBody));
+  check('the 404 message names the hot-reload cause and the way out',
+    /热重载/.test(callBody) && /停用再启用|重启 DSH Web/.test(callBody));
+  check('the retry is bounded — one attempt, then it reports',
+    /tries === 0/.test(callBody) && /call\(action, extra, tries \+ 1\)/.test(callBody));
+  check('a generic failure still reports the server error verbatim',
+    /\(data && data\.error\) \|\| 'HTTP ' \+ response\.status/.test(callBody));
+  // 反向判据：不许把任何非 2xx 都说成「热重载」，那会把真正的服务端错误藏掉。
+  check('the hot-reload wording is gated on 404, not on every non-2xx',
+    !/接口没有挂上/.test(callBody.split('response.status === 404')[0]));
+}
+// — v0.9.14: 冷启动竞态 —— 服务没就绪时不许把注册整段跳过 —
+{
+  // 真机形态：重启（不是热重载）后面板照样 404。原因不是路由写错了，而是
+  // apply() 里用 ctx.get('webServer') 一次性探测：冷启动时 webServer 与 tools
+  // 都比本插件晚 apply，那一次探测拿到 null，于是 if (webServer && ...) 整段
+  // 跳过，路由与两个工具都没注册 —— 而每段外面都包了 fail-soft try/catch，
+  // 所以只 warn 一行，面板与工具都静默消失。
+  const idxSrc = fs.readFileSync(path.join(here, 'lib', 'index.js'), 'utf8');
+
+  check('the plugin defers to ctx.inject instead of a one-shot lookup',
+    /ctx\.inject\(keys,/.test(idxSrc) && /function whenService\(/.test(idxSrc));
+  check('every service-backed registration goes through whenService',
+    (idxSrc.match(/whenService\(ctx, \['/g) || []).length >= 3);
+  // 反向判据：旧的裸探测写法必须彻底消失，否则冷启动仍会静默跳过。
+  check('no registration is left behind a bare try/getService probe',
+    !/try \{\n\s*const webServer = getService\(/.test(idxSrc)
+      && !/try \{\n\s*const tools = getService\(/.test(idxSrc)
+      && !/try \{\n\s*const sp = getService\(/.test(idxSrc));
+  // 静默失败是这次真正的病因：说得出「挂上了没有」比「应该挂上」有用。
+  check('the wiring outcome is recorded, not just logged',
+    /wiring\.route = 'registered'/.test(idxSrc) && /wiring\.route = 'failed: '/.test(idxSrc));
+  check('ping reports the wiring outcome so a 404 is diagnosable',
+    /wiring: \{ \.\.\.wiring \}/.test(idxSrc));
+  // 走的是哪条路也要记：inject 与一次性探测在冷启动下行为完全不同，
+  // 只看 route=registered 无法区分「真的等了」和「碰巧那次就绪了」。
+  check('the wiring path records whether inject was used',
+    /wiring\.via\[keys\.join\(','\)\] = 'inject'/.test(idxSrc)
+      && /wiring\.via\[keys\.join\(','\)\] = 'one-shot'/.test(idxSrc));
+}
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
