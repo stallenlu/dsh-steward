@@ -1,0 +1,9 @@
+# dsh-steward — read-only health check + authorized actions for DeepSeek Harness.
+# `- insert:` mounts the host entry; `name` MUST equal the installed package directory.
+# 包名是 scoped 的 '@sidady/dsh-steward'，pnpm 装出来的目录就是
+# node_modules/@sidady/dsh-steward，所以这里必须写全名；写裸名 'dsh-steward'
+# 只在本地手工 link 出裸目录时碰巧成立，从 npm 装的用户会解析不到包、
+# 整个 Web UI 起不来。
+- insert:
+    - id: dsh-steward
+      name: '@sidady/dsh-steward'

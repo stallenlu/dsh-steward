@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Steward · checkup + authorized actions",
+    "description": "Diagnoses the last boot crash and names the real cause, checks backup freshness, config drift, workspace growth, plugin update direction, host-version compatibility, and model availability. It never deletes files, never runs elevated commands, and never touches the boot path; every action shows you a plan first."
+  }
+}

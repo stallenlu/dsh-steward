@@ -1,0 +1,65 @@
+{
+  "name": "@sidady/dsh-steward",
+  "version": "0.9.12",
+  "type": "module",
+  "description": "Guardian for DeepSeek Harness: a read-only health check (boot crashes, backup freshness, config drift, workspace growth, plugin updates, host-version compat, model availability) plus an explicitly authorized action layer (plan → single-use fingerprint → confirm → audit) covering cache cleaning, encrypted volatile-data backups, plugin enable/disable, knowledge capture, finding mute, and switching the default model.",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "health-check",
+    "steward",
+    "read-only",
+    "authorized-actions",
+    "fail-soft"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/actions.js",
+    "lib/report.js",
+    "lib/intent.js",
+    "lib/settings.js",
+    "lib/brain.js",
+    "lib/models.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "ACCEPTANCE.md",
+    "LICENSE",
+    "smoke.mjs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "icon": "./icon.svg",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stallenlu/dsh-steward.git"
+  },
+  "homepage": "https://github.com/stallenlu/dsh-steward#readme",
+  "bugs": {
+    "url": "https://github.com/stallenlu/dsh-steward/issues"
+  },
+  "author": "sidady"
+}
