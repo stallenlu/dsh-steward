@@ -37,38 +37,50 @@
 > 还有一条**静态判据**的用法：像「渲染处不许把 ISO 的 T 换成空格」这类规约（v0.9.11），
 > 与其等它在界面上出错，不如直接扫源码——但静态判据必须**验证过会红**，否则它只是装饰。
 
-> **2026-11-10 五次修订（v0.9.12）：基线升到 v0.9.12 / 281 断言，新增 A14 一行。**
-> 这轮换的是配色，看似「只是好看」，实际改的是**信息语义**：原来选中态靠变蓝表示，
-> 而蓝在同一块面板里还表示 info 级发现——颜色同时承担「选中」和「严重度」两件事，
-> 看的人就没法只看颜色判断状态。改成 baseline 的反相选中后，颜色只剩「数据」这一个含义。
-> A14 要抓的是回流：`check.mjs` 只抓「硬编码的灰」，抓不到「自造一套蓝」——
-> 那只是另一种饱和度，checker 无从判断谁对，所以真正的判据落在了 smoke 的静态扫描里。
+> **2026-11-11 六次修订（v0.9.14）：基线升到 v0.9.14 / 292 断言，新增 A15 与 A16 两行。**
+> v0.9.13 与 v0.9.14 修的是同一个真机故障的两层：面板画得出来、每个请求都 404。
+> 第一层（v0.9.13）是**说法**问题——把 404 翻译成「接口没挂上」，但它把原因只归给了热重载。
+> 第二层（v0.9.14）才是**病因**：冷启动时 `webServer` 与 `tools` 的 apply 排在本插件之后，
+> 旧的 `getService(ctx,'webServer')` 一次性探测拿到 null，路由与两个工具都没注册，
+> 而三处注册外面都包着 fail-soft `try/catch`，于是**失败完全无声**。
+> 这两行分别钉住「说得准」和「挂得上」：
+> - **A15**「路由/工具是否注册成功，能不能被看见」——错把「面板画出来了」当成「插件在工作」。
+> - **A16**「冷启动与热重载是不是被当成同一个病因」——症状相同、修法不同，说错会让人白等一次重启。
 >
-## 基线快照（2026-11-10 15:40 采集（v0.9.12 重采），回看时用来对照）
+> 还有一条更一般的教训值得记在这里：**fail-soft 是正确设计，但它的代价必须是可观测**。
+> 这次不是注册逻辑写错了，是「注册失败」这个事实没有任何出口——面板照常渲染、`ping` 照常回
+> `{"ok":true}`、日志里只有一行 warn。**一个不会喊的守卫，和没有守卫是一样的。**
+
+## 基线快照（2026-11-11 05:05 采集（v0.9.14 重采），回看时用来对照）
 
 | 项 | 基线值 |
 |---|---|
-| bundle 版本 | `@sidady/dsh-steward` v0.9.12，installed + enabled（ping 与 package.json 一致） |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **281 passed / 0 failed** |
+| bundle 版本 | `@sidady/dsh-steward` v0.9.14，installed + enabled；ping 回报 `version:"0.9.14"` 且 `wiring.route:"registered"` |
+| npm 上的版本 | **`0.9.14`**（`dist-tags.latest`，2026-11-11 发布；0.9.13 未单独发布，被 0.9.14 覆盖） |
+| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `6c7f43e`（v0.9.14） |
+| 目录条目 | awesome-dsh-plugin PR **#14042** 开着；仓库年龄门到 2026-11-11T15:04:07Z（北京 23:04）才开，之后第一次 regate 是北京 2026-11-12 02:19；合并后 dshmarket 才拉得到 |
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **292 passed / 0 failed** |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:10, muted:0}`，`errors=[]`，共 12 条 findings |
-| crash 日志 | **4 份**：`crash-2026-11-07T02-53-24-868Z-web-boot.log`(10199 B) / `crash-2026-11-08T09-10-33-857Z-web-boot.log`(61087 B) / `crash-2026-11-09T23-27-20-521Z-web-boot.log`(31821 B) / `crash-2026-11-09T23-28-38-158Z-web-boot.log`(31821 B) |
-| audit.jsonl | 40 行（v0.9.8 起有 2000 行上限；`ok:false` 行仍在，说明拒绝路径活着） |
-| trend.json | **4 个点**，最新 `2026-11-10T03:50:33.499Z`；`cFreeBytes` 87.3 GB（更早一点 89.4 GB，不是恒定值） |
-| acked.json | 空数组 `[]`（v0.7.7 起 ack 带 `expiresAt`） |
-| 工作区 | 7 个 / 合计约 **192 MB**（采集时 201341401 B；这个数每次都在变，回看时只看「7 个」与增长判定，不要咬死体积）；判据是**增长**不是绝对体积，本轮「与上次相比无显著增长」 |
-| 插件更新 | 32 个已装包比对，13 个有新版本 + 3 个**已装比缓存新**（缓存偏旧，不算升级），0 个无法比较 |
+| 两条 warning | `plugin-change`（本会话记录到 1 次插件变更，属事实非异常）+ `data-at-risk`（易失数据不在默认备份分区，长期项） |
+| crash 日志 | **仍 4 份**，最晚 `crash-2026-11-09T23-28-38-158Z-web-boot.log`；v0.9.13/0.9.14 期间**零新增** |
+| audit.jsonl | 40 行（v0.9.8 起 2000 行上限） |
+| trend.json | **4 个点**，`cFreeBytes` 本轮 92.8 GB（此前 87.3 / 89.4 GB，不是恒定值） |
+| acked.json | 空数组 `[]` |
+| 工作区 | 7 个 / 合计约 **212 MB**（采集时 222699779 B；只看「7 个」与增长判定，不要咬死体积） |
+| 插件更新 | 比对 11 个已装包：**0 个落后、0 个缓存偏旧、0 个无法比较**（全部最新） |
 | 数据源覆盖 | `coverage` **7/7** = `data`，`unavailable=[]`，`errors=[]` |
-| 配置指纹 | `cordis.patch.yml` `1b85f7154b1261fd`（60159 B / 1994 行） / `package.json` `dc6c2f83d584c1a0`（2784 B / 87 行）。version 升会改 `package.json` 指纹，属正常；**块数变少**才报警 |
-| 设置 | `settings.json` 存在，`savedAt=2026-11-10T03:58:45.090Z`；`ttl.plugin-updates=14`（已回默认），`ui.entry=right`，`ui.toast=critical`，`ui.toastSeconds=12`，`model.probeOnReport=cached`，`perProvider=2`，`maxTotal=12`，`growthWarnMb=20` |
-| 客户端包 | 38 个声明了 `dsh.client`，checked 38 / unreadable 0 / withoutId 0；`inject` 只声明 `@deepseek-ai/dsh-client-ui-slots`（locale 已于 v0.9.10 去掉虚挂） |
-| 默认模型 | 12 个哨兵探针：8 ok / 0 dead / 4 busy（busy = 「没有返回内容」，不算坏）；默认模型可用 4504 ms |
-| 加密备份 | 2 份，最新 `dsh-config-2026-11-09-1749ba.zip`（95.7 MB）1 天前；另一份 `dsh-config-20261108-180014-ab10fd.zip`（65.6 MB） |
+| 配置指纹 | `cordis.patch.yml` `00751eb445af7595`（89178 B / 2816 行） / `profile package.json` `f48eb28205491760`（2837 B / 87 行）。**注意 patch 体量这两小时内从 60159 B 长到 89178 B**，回看时只比 `- id:` 块数有没有减少，不要比字节 |
+| 设置 | `savedAt=2026-11-10T03:58:45.090Z`；`ttl` 六项默认、`threshold.growthWarnMb=20`、`collect.maxLogs=50/maxBytesPerLog=2048`、`ui.entry=right`、`ui.toast=critical`、`ui.toastSeconds=12`、`model.probeOnReport=cached`、`perProvider=2`、`maxTotal=12` |
+| 客户端包 | 38 个声明 `dsh.client`，checked 38 / unreadable 0 / withoutId 0；`inject` 只声明 `@deepseek-ai/dsh-client-ui-slots` |
+| 默认模型 | 12 个哨兵：**6 ok / 0 dead / 6 busy**（busy = 「没有返回内容」，不算坏）；默认 `workbuddy/hy4free` 可用，本轮耗时 40714 ms（免费额度吃紧时会明显变慢，仍属 ok） |
+| 加密备份 | 2 份，最新 `dsh-config-2026-11-09-1749ba.zip`（100382581 B / 95.7 MB）1 天前；另一份 `dsh-config-20261108-180014-ab10fd.zip`（68776969 B） |
 
 > **版本号与基线数字的关系**：本表的数字是「当天真实跑出来的」，不是「必须永远等于这个」；
 > 回看时若断言数已经涨了（比如又加了几条），那是覆盖变多，记一笔新数字即可，不算退化。
-> 真正要盯的是：crash 日志有没有新增、`errors` 是否仍为空、`coverage` 是否仍 7/7。
-> **回看前先做一件事**：把 `package.json` 的 version 与 ping 的 version 对一下。两者不等说明
-> 磁盘改了但宿主没重载——此时面板看到的是旧代码，任何 A 项的结论都不作数。
+> 真正要盯的是：crash 日志有没有新增、`errors` 是否仍为空、`coverage` 是否仍 7/7、
+> 以及 `ping.wiring.route` 是否仍是 `registered`。
+> **回看前先做一件事**：把 `package.json` 的 version、npm 上的 latest、ping 的 version 三个对一下。
+> 三者不等说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数。
 
 ## 检查表
 
@@ -100,6 +112,8 @@
 | A12 | 模型健康是否把「忙」当「坏」 | 报告 `model-health` 的 `data.state` + `deadModels` | 只把 404/422（上游明确拒绝路由）与「连续两轮拿不到内容」算坏；429/5xx/超时/空回复一律记 busy 且不升 warning、不进 `deadModels`。若某个免费模型只是一时冷却却被写成「已不存在」→ ❌（这是最容易被免费额度误伤的一项） |
 | A13 | 「多久以前」与「比启动早多久」有没有被混成一个数 | 报告 `boot-crash-latest` 的 `data.ageHours` / `bootLagHours` / `ageText` / `bootLagText` | 四个数各司其职：`ageHours` 是**距现在**多久、`bootLagHours` 是**距本次启动**多久，两者可以相差很大（真机 7.3 小时 vs 0.01 小时）。标题/正文里出现「约 0 小时前」而事件实际已过去数小时 → ❌（v0.9.10 前就是这样）。同类要一并查：列表截断有没有说出「另有 N 个」（工作区 / 备份 / 采集告警，v0.9.10） |
 | A14 | 配色是不是又从 baseline 溜回自造色 | `node check.mjs ../dsh-steward/lib/client.js` + `smoke.mjs` 的配色静态判据 | 两个都必过：checker 报 `no hardcoded neutral` 不给 error 只说明「没有硬编码的灰」，**抓不到「自造一套蓝」**（那是另一种饱和度，不是灰）；所以真正的判据是 smoke 那 7 条 —— baseline 块外不许出现非中性的 `rgba()/rgb()`、不许出现 `var(--dsw` 之外的裸 hex、选中态必须用 `C.solid`/`C.on` 反相。若面板上又出现 `rgba(90,159,212,…)` 这类蓝、或选中态靠变蓝表示 → ❌（v0.9.12 前就是这样，12 处） |
+| A15 | 路由与工具是不是「注册了但没说」 | `ping` 的 `wiring.route` / `wiring.via` + 面板能不能出报告 | 必须 `wiring.route === "registered"`，且 `wiring.via` 里 `systemPrompt` / `webServer` / `tools` 三条都是 `inject`。若面板画得出来但每个请求 404、`dsh_steward_*` 工具又「未知工具」→ ❌（v0.9.14 前就是这样：冷启动竞态下三处注册全被静默跳过，而 `ping` 还回 `{"ok":true}`） |
+| A16 | 冷启动与热重载有没有被当成同一个病因 | 面板 404 时的提示文案 + 复现条件 | 两种情境都要能讲对：**热重载**=改插件文件后旧路由被销毁；**冷启动**=`webServer` 比插件晚 apply。文案里只写其中一种 → ❌（v0.9.13 只写热重载，于是用户重启后看到同一句提示，等于被指错了方向）。判据不看措辞好不好听，看它有没有把「我刚重启过」这个人排除掉 |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -122,7 +136,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 281 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 292 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
@@ -158,6 +172,12 @@ curl -s -X POST http://127.0.0.1:<当前端口>/api/dsh-steward/ -H 'content-typ
 
 # 5) 坏请求不该跑体检（C4）
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:<当前端口>/api/dsh-steward/ -H 'content-type: application/json' -d '{oops'
+
+# 6) 路由到底挂上没有（A15）——比「面板能不能画出来」可靠得多
+#    期望：version 三方一致，且 wiring.route === registered
+#          wiring.via 里 systemPrompt / webServer / tools 三条都是 inject
+curl -s -o "$TMP/ping.json" -X POST http://127.0.0.1:<当前端口>/api/dsh-steward/ -H 'content-type: application/json' -d '{"action":"ping"}'
+cat "$TMP/ping.json"
 ```
 
 > 端口每轮启动都会变，用运行时上下文里的 GUI URL，不要沿用旧端口。
@@ -194,6 +214,12 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:<当前端口>
 - **依赖声明必须与代码一致**：`dsh.client.inject` 里声明了却零调用的包就是虚挂，它今天不报错、将来宿主改注入方式时会以「找不到依赖」的形式炸掉（v0.9.10 去掉了 locale）。判定方式是 grep 实际调用，不是看别的插件怎么写。
 - **静态判据也必须验证会红**：像「渲染处不许把 ISO 的 T 换成空格」这种扫源码的断言，写完要故意改回旧写法确认它 FAIL，否则它只是装饰（v0.9.11 做了这次反向验证）。这条对所有 `smoke.mjs` 里的规约型断言都适用。
 - **测试全绿不等于包能装**：`files` 白名单漏一个文件时，从源码树跑的断言全绿、装包的人一启动就 `ERR_MODULE_NOT_FOUND` 并拖垮整个 Web UI（v0.9.9 的 `lib/models.js`）。发布前必须跑一次 `npm pack` 并解包核对相对 import（D5）。
+- **fail-soft 的代价必须是可观测**：
+注册失败、依赖缺失这类「不该拖垮启动」的降级是正确的，但如果它连一条能查到的状态都不留，
+就等于没有守卫。v0.9.14 之前三处注册全包在 `try/catch` 里只 warn 一行，
+结果面板照常渲染、`ping` 照常回 `{ok:true}`、路由却从未注册——
+**一个不会喊的守卫和没有守卫是一样的**。
+判据：任何 fail-soft 分支都要能把「我降级了」暴露到 ping / 报告 / 日志三处里至少一处（A15）。
 - **info 不算打扰，warning 才算**：判误报时先看 severity。info 天天在、你从不理它，是噪音的候选而非误报；warning 天天在、你无事可做，就是误报。
 - 出现 ❌ 时不改判定标准，只记原因；判定标准本身要改，必须写下「为什么原标准不可执行」，不许事后放宽。
 
