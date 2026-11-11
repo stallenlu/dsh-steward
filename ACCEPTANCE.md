@@ -70,8 +70,8 @@
 | 项 | 基线值 |
 |---|---|
 | bundle 版本 | `@sidady/dsh-steward` v0.9.15，installed + enabled；ping 回报 `version:"0.9.15"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
-| npm 上的版本 | **`0.9.14`**（`dist-tags.latest`）——本地已是 0.9.15，**尚未 publish**，见下「版本号与基线数字的关系」 |
-| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `e3ef16d`（docs 重采到 v0.9.14）；v0.9.15 代码待 commit + push |
+| npm 上的版本 | **`0.9.15`**（`dist-tags.latest`；2026-11-11 发布，从 registry 反装回来自检 313 全绿）——与本地、ping 三者一致 |
+| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `278857d`（`v0.9.15: wire up the missing steward duties`）；本地 `git status` 干净 |
 | 目录条目 | awesome-dsh-plugin PR **#14042** 开着；仓库年龄门 2026-11-11T15:04:07Z 开，之后第一次 regate 北京 2026-11-12 02:19；合并后 dshmarket 才拉得到 |
 | 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **313 passed / 0 failed**（含 21 条 v0.9.15 静态判据，7 条反向验证过会红） |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:10, muted:0}`，`errors=[]`，共 12 条 findings |
@@ -97,7 +97,10 @@
 > `ping.wiring.route` 是否仍是 `registered`、`trendVerdict` / `autoScanMinutes` / `wiring` 三个返回体字段是否还在。
 > **回看前先做一件事**：把 `package.json` 的 version、npm 上的 latest、ping 的 version 三个对一下。
 > 三者不等说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数。
-> **本次基线三者不等是已知状态**：本地 0.9.15 / npm 0.9.14 / ping 0.9.15，因为 0.9.15 还没发。发布后应回到三者一致。
+> **本次重采时 0.9.15 还没发**（本地 0.9.15 / npm 0.9.14 / ping 0.9.15）。2026-11-11 发布完成后已回到三者一致：
+> 本地 0.9.15 / npm `dist-tags.latest` 0.9.15 / ping 0.9.15，GitHub `main` = `278857d`。
+> 发布后从 registry 反装 `npm pack @sidady/dsh-steward@0.9.15` 解包核对：17 文件、`lib/` 8 个 JS、8 个相对 import 全命中、
+> 在 tarball 里跑 `node smoke.mjs` 仍 **313 passed / 0 failed**。
 
 ## 检查表
 
