@@ -51,36 +51,53 @@
 > 这次不是注册逻辑写错了，是「注册失败」这个事实没有任何出口——面板照常渲染、`ping` 照常回
 > `{"ok":true}`、日志里只有一行 warn。**一个不会喊的守卫，和没有守卫是一样的。**
 
-## 基线快照（2026-11-11 05:05 采集（v0.9.14 重采），回看时用来对照）
+> **2026-11-11 七次修订（v0.9.15）：基线升到 v0.9.15 / 313 断言，新增 A17–A21 五行。**
+> 这一轮不是修 bug，是把职能设定里「本该有、却一直缺」的几件补齐：
+> - **P0**：`setSaved` 把 UTC 切片当本地时间贴给东八区（差 8 小时），而静态判据只认单引号写法、
+>   双引号绕过去了；`ui.autoScanMinutes` 是个死设置——界面显示「已保存」、行为永远按硬编码的 10 分钟。
+> - **P1**：只有「静音」没有「这条判错了」入口，两周验收只能人肉回看，管家学不会；
+>   现在 `feedback.json` + plan→confirm→audit 同一条链，判错后降 40 分、不再计直达处置、可撤销、不过期。
+> - **P2**：趋势页只是流水行、只报坏不报好、15 个 finding 里 10 个没有直达（其中一条还指向不存在的动作卡）、
+>   自检结果只在 `ping` 里。现在服务端算好 `trendVerdict` 的人话、好转/连续恶化会主动弹、
+>   面板显示 `wiring`、删掉那条假直达并补上 `backup-freshness → backup`。
+>
+> 五行的共同点：**它们都是「界面上看着有、其实没接上」**——设置一个值不生效、一个按钮点不到东西、
+> 一个时间差 8 小时、一条结论没人说。这类缺陷不会让体检报错，只会让人对面板失去信任。
+> 所以 A17–A21 一律判「接没接上 / 说没说清」，不判「代码写得对不对」。
+
+## 基线快照（2026-11-11 19:40 采集（v0.9.15 重采），回看时用来对照）
 
 | 项 | 基线值 |
 |---|---|
-| bundle 版本 | `@sidady/dsh-steward` v0.9.14，installed + enabled；ping 回报 `version:"0.9.14"` 且 `wiring.route:"registered"` |
-| npm 上的版本 | **`0.9.14`**（`dist-tags.latest`，2026-11-11 发布；0.9.13 未单独发布，被 0.9.14 覆盖） |
-| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `6c7f43e`（v0.9.14） |
-| 目录条目 | awesome-dsh-plugin PR **#14042** 开着；仓库年龄门到 2026-11-11T15:04:07Z（北京 23:04）才开，之后第一次 regate 是北京 2026-11-12 02:19；合并后 dshmarket 才拉得到 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **292 passed / 0 failed** |
+| bundle 版本 | `@sidady/dsh-steward` v0.9.15，installed + enabled；ping 回报 `version:"0.9.15"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
+| npm 上的版本 | **`0.9.14`**（`dist-tags.latest`）——本地已是 0.9.15，**尚未 publish**，见下「版本号与基线数字的关系」 |
+| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `e3ef16d`（docs 重采到 v0.9.14）；v0.9.15 代码待 commit + push |
+| 目录条目 | awesome-dsh-plugin PR **#14042** 开着；仓库年龄门 2026-11-11T15:04:07Z 开，之后第一次 regate 北京 2026-11-12 02:19；合并后 dshmarket 才拉得到 |
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **313 passed / 0 failed**（含 21 条 v0.9.15 静态判据，7 条反向验证过会红） |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:10, muted:0}`，`errors=[]`，共 12 条 findings |
 | 两条 warning | `plugin-change`（本会话记录到 1 次插件变更，属事实非异常）+ `data-at-risk`（易失数据不在默认备份分区，长期项） |
-| crash 日志 | **仍 4 份**，最晚 `crash-2026-11-09T23-28-38-158Z-web-boot.log`；v0.9.13/0.9.14 期间**零新增** |
-| audit.jsonl | 40 行（v0.9.8 起 2000 行上限） |
-| trend.json | **4 个点**，`cFreeBytes` 本轮 92.8 GB（此前 87.3 / 89.4 GB，不是恒定值） |
-| acked.json | 空数组 `[]` |
-| 工作区 | 7 个 / 合计约 **212 MB**（采集时 222699779 B；只看「7 个」与增长判定，不要咬死体积） |
-| 插件更新 | 比对 11 个已装包：**0 个落后、0 个缓存偏旧、0 个无法比较**（全部最新） |
+| `trendVerdict` | **新增字段**：`{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}`；服务端算好人话、客户端只渲染 |
+| `autoScanMinutes` / `wiring` | report 返回体新增：`autoScanMinutes: 10`、`wiring.route:"registered"`；面板生成时间行下显示「接口已挂上 · 路由与工具随服务就绪后注册」 |
+| crash 日志 | **仍 4 份**，最晚 `crash-2026-11-09T23-28-38-158Z-web-boot.log`；v0.9.13 起**零新增** |
+| audit.jsonl | 40 行（2000 行上限） |
+| trend.json | **4 个点**，`cFreeBytes` 本轮 ≈74.8 GB（80363397120 B） |
+| acked.json / feedback.json | `[]` / **尚不存在**（v0.9.15 新增，没有用户点过「这条判错了」就不会建文件；首次标记后才有） |
+| 工作区 | 7 个 / 合计约 **232 MB**（采集时 243226827 B；只看「7 个」与增长判定，不要咬死体积） |
+| 插件更新 | 比对 11 个已装包：**0 个落后、1 个缓存偏旧、0 个无法比较** |
 | 数据源覆盖 | `coverage` **7/7** = `data`，`unavailable=[]`，`errors=[]` |
-| 配置指纹 | `cordis.patch.yml` `00751eb445af7595`（89178 B / 2816 行） / `profile package.json` `f48eb28205491760`（2837 B / 87 行）。**注意 patch 体量这两小时内从 60159 B 长到 89178 B**，回看时只比 `- id:` 块数有没有减少，不要比字节 |
-| 设置 | `savedAt=2026-11-10T03:58:45.090Z`；`ttl` 六项默认、`threshold.growthWarnMb=20`、`collect.maxLogs=50/maxBytesPerLog=2048`、`ui.entry=right`、`ui.toast=critical`、`ui.toastSeconds=12`、`model.probeOnReport=cached`、`perProvider=2`、`maxTotal=12` |
+| 配置指纹 | `cordis.patch.yml` `40c7de15f6a7500d`（82811 B / 2720 行） / `profile package.json` `bc95db08d316c10c`（2837 B / 87 行）。**patch 体量在变**（60159→89178→82811 B）：回看只比 `- id:` 块数有没有减少，不要比字节 |
+| 设置 | `savedAt` 沿用旧值；新增的活设置 `ui.autoScanMinutes=10` 已穿透到 report 返回体与客户端阈值 |
 | 客户端包 | 38 个声明 `dsh.client`，checked 38 / unreadable 0 / withoutId 0；`inject` 只声明 `@deepseek-ai/dsh-client-ui-slots` |
-| 默认模型 | 12 个哨兵：**6 ok / 0 dead / 6 busy**（busy = 「没有返回内容」，不算坏）；默认 `workbuddy/hy4free` 可用，本轮耗时 40714 ms（免费额度吃紧时会明显变慢，仍属 ok） |
-| 加密备份 | 2 份，最新 `dsh-config-2026-11-09-1749ba.zip`（100382581 B / 95.7 MB）1 天前；另一份 `dsh-config-20261108-180014-ab10fd.zip`（68776969 B） |
+| 默认模型 | `model-health`：`state:"ok"`、4096 ms；默认 `workbuddy/hy4free` 可用 |
+| 兼容 / 加密备份 | 11 个声明门槛的包都适配宿主 `0.2.2-rc.1`；加密备份 2 份，最新 `dsh-config-2026-11-09-1749ba.zip`（100382581 B / 95.7 MB） |
 
 > **版本号与基线数字的关系**：本表的数字是「当天真实跑出来的」，不是「必须永远等于这个」；
 > 回看时若断言数已经涨了（比如又加了几条），那是覆盖变多，记一笔新数字即可，不算退化。
 > 真正要盯的是：crash 日志有没有新增、`errors` 是否仍为空、`coverage` 是否仍 7/7、
-> 以及 `ping.wiring.route` 是否仍是 `registered`。
+> `ping.wiring.route` 是否仍是 `registered`、`trendVerdict` / `autoScanMinutes` / `wiring` 三个返回体字段是否还在。
 > **回看前先做一件事**：把 `package.json` 的 version、npm 上的 latest、ping 的 version 三个对一下。
 > 三者不等说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数。
+> **本次基线三者不等是已知状态**：本地 0.9.15 / npm 0.9.14 / ping 0.9.15，因为 0.9.15 还没发。发布后应回到三者一致。
 
 ## 检查表
 
@@ -114,6 +131,11 @@
 | A14 | 配色是不是又从 baseline 溜回自造色 | `node check.mjs ../dsh-steward/lib/client.js` + `smoke.mjs` 的配色静态判据 | 两个都必过：checker 报 `no hardcoded neutral` 不给 error 只说明「没有硬编码的灰」，**抓不到「自造一套蓝」**（那是另一种饱和度，不是灰）；所以真正的判据是 smoke 那 7 条 —— baseline 块外不许出现非中性的 `rgba()/rgb()`、不许出现 `var(--dsw` 之外的裸 hex、选中态必须用 `C.solid`/`C.on` 反相。若面板上又出现 `rgba(90,159,212,…)` 这类蓝、或选中态靠变蓝表示 → ❌（v0.9.12 前就是这样，12 处） |
 | A15 | 路由与工具是不是「注册了但没说」 | `ping` 的 `wiring.route` / `wiring.via` + 面板能不能出报告 | 必须 `wiring.route === "registered"`，且 `wiring.via` 里 `systemPrompt` / `webServer` / `tools` 三条都是 `inject`。若面板画得出来但每个请求 404、`dsh_steward_*` 工具又「未知工具」→ ❌（v0.9.14 前就是这样：冷启动竞态下三处注册全被静默跳过，而 `ping` 还回 `{"ok":true}`） |
 | A16 | 冷启动与热重载有没有被当成同一个病因 | 面板 404 时的提示文案 + 复现条件 | 两种情境都要能讲对：**热重载**=改插件文件后旧路由被销毁；**冷启动**=`webServer` 比插件晚 apply。文案里只写其中一种 → ❌（v0.9.13 只写热重载，于是用户重启后看到同一句提示，等于被指错了方向）。判据不看措辞好不好听，看它有没有把「我刚重启过」这个人排除掉 |
+| A17 | 本地时间有没有被 UTC 冒充（两种引号都查） | `smoke.mjs` 的 v0.9.11 / v0.9.15 静态判据 + 面板「设置」的保存时间 | 判据必须同时认单引号与双引号的 `.replace("T"," ")` 写法，且 `setSaved` 走 `localStamp()`。若把保存时间显示成 UTC（比实际差 8 小时）、或改回 `.replace("T"," ")` 后静态判据仍全绿 → ❌（v0.9.15 前双引号绕过判据） |
+| A18 | 设置项是不是真的接上了（**抓死设置**） | report 返回体 `autoScanMinutes` + 客户端 `useEffect` 阈值 | 改 `ui.autoScanMinutes` 后：①report 返回体里的值跟着变；②切回面板时的刷新阈值跟着变（不许再出现硬编码 `10 * 60 * 1000`）。若界面显示「已保存」而行为不变 → ❌（v0.9.15 前就是这样） |
+| A19 | 误报反馈闭环是否成立 | `feedback.json` + 面板「这条判错了 / 撤销判错」 + `audit.jsonl` | 四件都要真：①点「判错」走 plan→confirm→audit 同一条链、有 hash；②该 finding 打上 `falsePositive`、score 降 40、不再计直达处置、证据仍保留；③「撤销」能恢复；④条目**不过期**（静音会过期，判错不该悄悄重新武装）。任何一件没接上 → ❌ |
+| A20 | 趋势结论与好转通知是不是服务端算的人话 | report `trendVerdict` + 面板「审计趋势」结论行 + ToastHost | `trendVerdict` 必须有 `state`（worsening / recovered / stable）、`worseningStreak`、中文 `text`，由服务端 `summarizeTrend()` 算好、客户端只渲染；好转或连续 ≥2 次变差要主动弹一条（用 `generatedAt` 去重，不许反复弹）。若趋势页仍只是流水行、或只报坏不报好 → ❌ |
+| A21 | 直达按钮不造假 + 自检结果用户可见 | `ACTION_FOR` + 动作卡清单 + 面板生成时间行 | ①`ACTION_FOR` 里每一条映射都要有对应的动作卡（v0.9.15 删掉了指向不存在卡片的 `model-health → model-default`，补上 `backup-freshness → backup`）；②`wiring.route` 要显示在面板上，没挂上时给红字与恢复办法，不能只藏在 `ping` 里。若点了「去看看」跳到一个不存在的动作、或路由挂不上却面板无提示 → ❌ |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -128,7 +150,7 @@
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
 | C1 | 没有代跑提权命令 | 会话记录 + `audit.jsonl` | 全期零次 `DISM` / `diskpart compact` / 卸载程序被 Agent 执行（只呈现过建议）→ ✅ |
-| C2 | 没有「未经授权就动手」 | `audit.jsonl` 每条 `kind` ∈ {clean,backup,disable,enable,knowledge,ack,unack,model-default} 且都有 `hash` | 不存在 hash 为空却 `ok:true` 的执行行 → ✅ |
+| C2 | 没有「未经授权就动手」 | `audit.jsonl` 每条 `kind` ∈ {clean,backup,disable,enable,knowledge,ack,unack,model-default,feedback,unfeedback} 且都有 `hash` | 不存在 hash 为空却 `ok:true` 的执行行 → ✅ |
 | C3 | 口令红线：11-16 周提醒只提醒不代做 | 会话记录（2026-11-16 10:00 那次触发） | Agent 没有索要口令、没有代跑、没有提议代跑 → ✅；任何一项违反 → ❌ 并回写 USER.md |
 | C4 | 坏请求不会触发写动作 | 对路由发畸形 body | `{oops` / `{}` / 超 16 KB / JSON 数组 必须全部 400，且**不得**因此跑一次体检（v0.9.8 前会把空 action 当 report）→ ✅ |
 
@@ -136,7 +158,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 292 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 313 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
@@ -178,6 +200,12 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:<当前端口>
 #          wiring.via 里 systemPrompt / webServer / tools 三条都是 inject
 curl -s -o "$TMP/ping.json" -X POST http://127.0.0.1:<当前端口>/api/dsh-steward/ -H 'content-type: application/json' -d '{"action":"ping"}'
 cat "$TMP/ping.json"
+
+# 7) v0.9.15 新增字段（A18–A21）——确认「接上了」而不只是「写好了」
+curl -s -o "$TMP/rep.json" -X POST http://127.0.0.1:<当前端口>/api/dsh-steward/ -H 'content-type: application/json' -d '{"action":"report"}'
+node -e "const r=require(process.argv[1]); console.log('autoScanMinutes:',r.autoScanMinutes,'wiring:',r.wiring.route,'trendVerdict:',r.report.trendVerdict.state,r.report.trendVerdict.text)" "$TMP/rep.json"
+# 误报反馈：点一次「这条判错了」后应出现 feedback.json，且该 finding 带 falsePositive、score 降 40
+cat ~/.dsh/dsh-steward/feedback.json 2>/dev/null || echo '(还没有判错记录)'
 ```
 
 > 端口每轮启动都会变，用运行时上下文里的 GUI URL，不要沿用旧端口。
@@ -222,6 +250,15 @@ cat "$TMP/ping.json"
 判据：任何 fail-soft 分支都要能把「我降级了」暴露到 ping / 报告 / 日志三处里至少一处（A15）。
 - **info 不算打扰，warning 才算**：判误报时先看 severity。info 天天在、你从不理它，是噪音的候选而非误报；warning 天天在、你无事可做，就是误报。
 - 出现 ❌ 时不改判定标准，只记原因；判定标准本身要改，必须写下「为什么原标准不可执行」，不许事后放宽。
+- **「界面上有」不等于「接上了」**：一个设置项显示「已保存」但行为按硬编码走、一个按钮指向不存在的动作卡、
+  一个时间差 8 小时、一条趋势结论没人说——这些都不让体检报错，只让人对面板失去信任。
+  A17–A21 一律判「接没接上 / 说没说清」，不判「代码写得对不对」。
+- **静态判据本身也要防绕过**：v0.9.11 那条「不许把 ISO 的 T 换成空格」只认单引号，v0.9.15 前双引号写法
+  就绕过去了。规约型断言写完要问一句「换一种引号 / 换一种写法还能不能抓到」，并反向验证会红。
+- **判错不是静音**：静音是「我知道了先不修」（会过期、会回来），判错是「这条结论本身错了」
+  （不过期、降权、但证据保留）。两者混成一个入口，两周验收就学不到东西（A19）。
+- **好转也要说**：只报坏不报好，用户永远不知道管家在变好还是在变差；但好转通知必须去重，
+  否则每次体检都弹一次，本身就成了新的噪音（A20）。
 
 ## 回看结论栏（11-23 填）
 

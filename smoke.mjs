@@ -1329,8 +1329,9 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   const clientLines = clientSrc.split("\n");
   // 审计/趋势里存的是 UTC ISO；切片或把 T 换成空格都会原样把 UTC 贴给用户
   // （东八区差 8 小时）。本地化必须走 localStamp，不能用字符串处理假装。
-  const TQ = String.fromCharCode(39);
-  const naive = clientLines.filter((l) => l.includes(".replace(") && l.includes(TQ + "T" + TQ + ", " + TQ + " " + TQ));
+  const TQ = String.fromCharCode(39), TDQ = String.fromCharCode(34);
+  const swap = (q) => q + "T" + q + ", " + q + " " + q;
+  const naive = clientLines.filter((l) => l.includes(".replace(") && (l.includes(swap(TQ)) || l.includes(swap(TDQ))));
   check("no render path formats a timestamp by swapping the ISO T", naive.length === 0, naive.map((l) => l.trim().slice(0, 70)).join(" | "));
   check("the local-time formatter exists", clientSrc.includes("function localStamp("));
   const uses = (clientSrc.match(/localStamp\(/g) || []).length;
@@ -1425,6 +1426,52 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the wiring path records whether inject was used',
     /wiring\.via\[keys\.join\(','\)\] = 'inject'/.test(idxSrc)
       && /wiring\.via\[keys\.join\(','\)\] = 'one-shot'/.test(idxSrc));
+}
+
+
+// — v0.9.15: 职能缺口补齐（P0 修真 bug / P1 误报反馈 / P2 趋势与直达）—
+{
+  const clientSrc = fs.readFileSync(path.join(here, "lib", "client.js"), "utf8");
+  const indexSrc = fs.readFileSync(path.join(here, "lib", "index.js"), "utf8");
+  const actionsSrc = fs.readFileSync(path.join(here, "lib", "actions.js"), "utf8");
+  const reportSrc = fs.readFileSync(path.join(here, "lib", "report.js"), "utf8");
+  const clientLines = clientSrc.split(String.fromCharCode(10));
+
+  // P0-a: 保存时间的本地化不许再用「把 T 换成空格」的写法，两种引号都查。
+  const SQ = String.fromCharCode(39), DQ = String.fromCharCode(34);
+  const swaps = [SQ, DQ].map((q) => q + "T" + q + ", " + q + " " + q);
+  const naive = clientLines.filter((l) => l.includes(".replace(") && swaps.some((s) => l.includes(s)));
+  check("P0-a no ISO-T swap survives in either quote style", naive.length === 0, naive.map((l) => l.trim().slice(0, 60)).join(" | "));
+  const savedLine = clientLines.find((l) => l.includes("setSaved(") && l.includes("res.savedAt"));
+  check("P0-a the saved-at display calls localStamp", !!savedLine && savedLine.includes("localStamp("));
+
+  // P0-b: autoScanMinutes 必须是活设置，不是写死的 10 分钟。
+  check("P0-b the client reads autoScanMinutes from the report payload", clientSrc.includes("cache.autoScanMinutes"));
+  check("P0-b the hardcoded 10-minute threshold is gone", !clientSrc.includes("10 * 60 * 1000"));
+  check("P0-b the host sends autoScanMinutes from settings", indexSrc.includes("autoScanMinutes: settingValue(currentSettings(), " + SQ + "ui.autoScanMinutes" + SQ + ")"));
+
+  // P1: 误报反馈是一个有数据文件、可 plan/execute、能影响评分、可撤销的真动作。
+  check("P1 feedback has its own data file", indexSrc.includes("feedback: path.join(dataDir(), " + SQ + "feedback.json" + SQ + ")"));
+  check("P1 plan handles feedback and unfeedback", actionsSrc.includes("kind === " + SQ + "feedback" + SQ + " || kind === " + SQ + "unfeedback" + SQ));
+  check("P1 execute persists the feedback list", actionsSrc.includes("writeJson(deps.feedbackFile, list)"));
+  check("P1 report marks falsePositive from options.feedback", reportSrc.includes("f.falsePositive = feedbackIds.has(f.id)"));
+  check("P1 a false positive loses the actionable bonus", reportSrc.includes("&& !f.falsePositive && !gateBlocked"));
+  check("P1 the score states the false-positive penalty", reportSrc.includes("用户标记判错 -40"));
+  check("P1 the panel offers a 判错 button", clientSrc.includes("这条判错了"));
+
+  // P2-a: 趋势结论由服务端算好人话，恢复/连续恶化会主动说。
+  check("P2-a summarizeTrend is exported from report.js", reportSrc.includes("export function summarizeTrend("));
+  check("P2-a collectReport returns a trendVerdict", reportSrc.includes("trendVerdict,"));
+  check("P2-a the text report states the trend", indexSrc.includes("趋势: ${report.trendVerdict.text}"));
+  check("P2-a toasts fire on recovery",
+    clientSrc.includes("tv.state === " + SQ + "recovered" + SQ + " ||") && clientSrc.includes("pushToast({ kind: " + SQ + "trend" + SQ));
+  check("P2-a ToastCard can paint an ok tone", clientSrc.includes("t.severity === " + SQ + "ok" + SQ + " ? C.ok"));
+  check("P2-a AuditTab prints the trend verdict", clientSrc.includes("趋势结论 · "));
+
+  // P2-b: 不假造直达动作；运行期自检结果要给用户看见。
+  check("P2-b the phantom model-default shortcut is gone", !clientSrc.includes("" + SQ + "model-health" + SQ + ": " + SQ + "model-default" + SQ) && clientSrc.includes("" + SQ + "backup-freshness" + SQ + ": " + SQ + "backup" + SQ));
+  check("P2-b the host sends wiring with the report", indexSrc.includes("wiring: { ...wiring }"));
+  check("P2-b the panel shows the wiring outcome", clientSrc.includes("接口已挂上"));
 }
 
 console.log('');
