@@ -6,7 +6,7 @@
  * probes the fail-soft path (unreadable directories) and the real machine
  * (best-effort) to confirm the parser works on actual crash logs.
  */
-import { collectReport, parseBootFailure } from './lib/report.js';
+import { collectReport, parseBootFailure, dutyBriefing } from './lib/report.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -1472,6 +1472,80 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check("P2-b the phantom model-default shortcut is gone", !clientSrc.includes("" + SQ + "model-health" + SQ + ": " + SQ + "model-default" + SQ) && clientSrc.includes("" + SQ + "backup-freshness" + SQ + ": " + SQ + "backup" + SQ));
   check("P2-b the host sends wiring with the report", indexSrc.includes("wiring: { ...wiring }"));
   check("P2-b the panel shows the wiring outcome", clientSrc.includes("接口已挂上"));
+}
+
+{
+  // ---- v0.9.16: L0 当班环（只读、可观测、绝不自动执行） ----
+  const dutyIndex = fs.readFileSync(path.join(here, 'lib', 'index.js'), 'utf8');
+  const dutyClient = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  const dutyReport = fs.readFileSync(path.join(here, 'lib', 'report.js'), 'utf8');
+
+  const mkDutyReport = (findings, level, text) => ({
+    summary: { level: level || 'warning', counts: { critical: 0, warning: 2, info: 3, muted: 0 } },
+    trendVerdict: text ? { state: 'stable', text } : null,
+    findings: findings || [],
+  });
+  const dOk = { id: 'a', severity: 'warning', recommendation: '去动作中心看看 A', muted: false, falsePositive: false };
+  const dMuted = { id: 'b', severity: 'info', recommendation: '这条被静音', muted: true, falsePositive: false };
+  const dFalse = { id: 'c', severity: 'critical', recommendation: '这条被判错', muted: false, falsePositive: true };
+  const dB = dutyBriefing(mkDutyReport([dOk, dMuted, dFalse]), { at: '2026-11-12T22:00:00.000Z', trigger: 'boot' });
+  check('dutyBriefing is pure: at + trigger pass through unchanged', dB.at === '2026-11-12T22:00:00.000Z' && dB.trigger === 'boot', JSON.stringify({ at: dB.at, trigger: dB.trigger }));
+  check('dutyBriefing records state=observe-only and executed=0', dB.state === 'observe-only' && dB.executed === 0);
+  check('dutyBriefing excludes muted and false-positive findings', dB.suggestions.length === 1 && dB.suggestions[0].id === 'a', JSON.stringify(dB.suggestions));
+  check('dutyBriefing writes a human "seen" line', typeof dB.seen === 'string' && dB.seen.indexOf('3 条发现') >= 0 && dB.seen.indexOf('1 条仍在报') >= 0, dB.seen);
+  check('dutyBriefing explains WHY nothing was executed', typeof dB.action === 'string' && dB.action.indexOf('未执行任何动作') >= 0 && dB.action.indexOf('1 条处置建议') >= 0, dB.action);
+  check('dutyBriefing prefers the server-computed trend verdict', dutyBriefing(mkDutyReport([], 'warning', '连续 2 次体检都在变差')).verdict.indexOf('连续 2 次') >= 0);
+  const dSame1 = dutyBriefing(mkDutyReport([], 'ok'), { at: '2026-11-12T22:00:00.000Z', trigger: 'scheduled' });
+  const dSame2 = dutyBriefing(mkDutyReport([], 'ok'), { at: '2026-11-12T22:00:00.000Z', trigger: 'scheduled' });
+  check('dutyBriefing is deterministic for identical input', JSON.stringify(dSame1) === JSON.stringify(dSame2));
+  const manyF = Array.from({ length: 9 }, (_, i) => ({ id: 'f' + i, severity: 'info', recommendation: '建议' + i }));
+  check('dutyBriefing caps the prepared suggestions at 6', dutyBriefing(mkDutyReport(manyF)).suggestions.length === 6);
+
+  // 服务端：周期当班 + 重入/去抖 + 三处返回体带 duty + 绝不自动执行
+  check('L0 duty loop is driven by setInterval', dutyIndex.indexOf('setInterval(dutyTick') >= 0);
+  // 裸定时器在 fiber 被 HMR 换掉 / 停用插件时不会停，每重载一次多一个永不停止的当班环。
+  // 钉死它挂在 ctx.effect 上并且 dispose 里 clearInterval。
+  // 用正则钉「完整 label」：indexOf 会被 'L0 duty-DISABLED' 之类前缀命中而永远绿（v0.9.15 的教训）。
+  const dutyEffectLabel = /'dsh-steward: L0 duty'/.exec(dutyIndex);
+  const dutyEffectAt = dutyEffectLabel ? dutyEffectLabel.index : -1;
+  const dutyEffectBlock = dutyEffectAt >= 0 ? dutyIndex.slice(dutyIndex.lastIndexOf('ctx.effect(', dutyEffectAt), dutyEffectAt) : '';
+  check('the duty timer is owned by a ctx.effect with a clearInterval dispose',
+    dutyEffectAt >= 0
+      && dutyEffectBlock.indexOf('setInterval(dutyTick') >= 0
+      && dutyEffectBlock.indexOf('return () =>') >= 0
+      && dutyEffectBlock.indexOf('clearInterval(dutyTimer)') >= 0,
+    dutyEffectBlock.slice(0, 140));
+  check('the duty interval follows ui.autoScanMinutes', dutyIndex.indexOf("settingValue(currentSettings(), 'ui.autoScanMinutes')") >= 0 && dutyIndex.indexOf('dutyIntervalMs') >= 0);
+  check('the duty loop has a re-entry guard', dutyIndex.indexOf('if (dutyRunning) return null') >= 0);
+  check('the duty loop has a debounce', dutyIndex.indexOf('Date.now() - dutyLastAt < 1000') >= 0);
+  const rdStart = dutyIndex.indexOf('async function runDuty(');
+  const rdEnd = dutyIndex.indexOf('const hub = createActionHub(', rdStart);
+  const rdBody = rdStart >= 0 && rdEnd > rdStart ? dutyIndex.slice(rdStart, rdEnd) : '';
+  check('runDuty reuses the read-only report and never calls plan/execute', rdBody.indexOf("await run('report', {})") >= 0 && rdBody.indexOf('hub.plan(') < 0 && rdBody.indexOf('hub.execute(') < 0, rdBody.slice(0, 160));
+  check('the duty ledger is persisted to duty.jsonl', dutyIndex.indexOf("duty: path.join(dataDir(), 'duty.jsonl')") >= 0 && dutyIndex.indexOf('io.appendJsonl(files.duty, briefing)') >= 0);
+  // readDutyLog 的 split 参数必须真的是「换行符」。写成 '\\n'（双反斜杠）会永远读不出
+  // 分班记录，而静态判据只看得见「有 split」。这里把源码里的字面量求值，钉死它等于一个换行符。
+  const dutySplitLine = dutyIndex.split('\n').find((l) => l.indexOf('raw.split(') >= 0 && l.indexOf('DUTY_LOG_CAP') >= 0) || '';
+  const dsi = dutySplitLine.indexOf('raw.split(') + 'raw.split('.length;
+  const dsArg = dutySplitLine.slice(dsi);
+  const dsQuote = dsArg[0];
+  const dsEnd = dsQuote ? dsArg.indexOf(dsQuote, 1) : -1;
+  const dsExpr = dsEnd > 0 ? dsArg.slice(0, dsEnd + 1) : '';
+  let dsVal = null;
+  try { dsVal = Function('return ' + dsExpr)(); } catch { /* 求值失败就让它红 */ }
+  check('readDutyLog splits on a real newline (runtime-evaluated), not a literal backslash-n', dsVal === '\n' && dsVal.length === 1, JSON.stringify({ dsExpr, len: dsVal && dsVal.length }));
+  check('ping / report / audit all expose duty', (dutyIndex.match(/duty: await dutySnapshot\(\)/g) || []).length === 3);
+  check('the boot checkup goes through runDuty (not a bare report)', dutyIndex.indexOf("runDuty('boot')") >= 0);
+
+  // 面板：当班状态 + 当班台账（服务端算好人话、客户端只渲染）
+  check('the panel shows the duty status line', dutyClient.indexOf('当班 · ') >= 0 && dutyClient.indexOf('cache.duty') >= 0);
+  check('the audit tab shows the duty ledger', dutyClient.indexOf('当班台账 · ') >= 0 && dutyClient.indexOf('data.duty.suggestions') >= 0);
+  check('the panel caches duty from report responses', (dutyClient.match(/cache\.duty = data\.duty/g) || []).length >= 2);
+  check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
+
+  // 版本与文档
+  check('v0.9.16 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.16');
+  check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
 console.log('');

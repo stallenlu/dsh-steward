@@ -64,43 +64,57 @@
 > 五行的共同点：**它们都是「界面上看着有、其实没接上」**——设置一个值不生效、一个按钮点不到东西、
 > 一个时间差 8 小时、一条结论没人说。这类缺陷不会让体检报错，只会让人对面板失去信任。
 > 所以 A17–A21 一律判「接没接上 / 说没说清」，不判「代码写得对不对」。
+>
+> **2026-11-12 八次修订（v0.9.16）：基线升到 v0.9.16 / 337 断言，新增 A22 一行。**
+> **口径变更，必须如实记**：11-12 曾按覆盖矩阵收口、约定「11-23 回看前不再加功能代码」；
+> 但用户随后重新定义了核心定位（m12723「管家不只是听命令的工具，而是在一定授权内可以安全自主完成职责任务的智能帮手」），
+> 并授权「现在做」（m12744）——那把尺子从「覆盖度」换成了「自主度」，原封板结论因此失效，这次不是违背约定而是**换了一把尺子重排权重**：
+> 不会自己醒来当班的管家不是「差一点贴心」，是不成其为管家。为避免把「扩自主权」与「11-23 干净观察期」混在一起，
+> 这一版**只做 L0 观察档**（周期体检 + 当班台账 + 预备建议，全只读、绝不碰授权面），L1/L2 受托执行仍不实现。
+> - **A22** 专盯这次新增的自主度带来的新误报面：管家自己醒来后有没有制造噪音 / 有没有偷偷动手 / 定时器有没有泄漏。
+>
+> 设计文档另存 Mnemon `42042339-cc9d-4ecb-8d71-dc3ade7dffdd`（与定稿 f7e5a482 并列保留，不覆盖）。
 
-## 基线快照（2026-11-11 19:40 采集（v0.9.15 重采），回看时用来对照）
+## 基线快照（2026-11-12 22:33 采集（v0.9.16 重采），回看时用来对照）
 
 | 项 | 基线值 |
 |---|---|
-| bundle 版本 | `@sidady/dsh-steward` v0.9.15，installed + enabled；ping 回报 `version:"0.9.15"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
-| npm 上的版本 | **`0.9.15`**（`dist-tags.latest`；2026-11-11 发布，从 registry 反装回来自检 313 全绿）——与本地、ping 三者一致 |
-| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `278857d`（`v0.9.15: wire up the missing steward duties`）；本地 `git status` 干净 |
-| 目录条目 | awesome-dsh-plugin PR **#14042** 开着；仓库年龄门 2026-11-11T15:04:07Z 开，之后第一次 regate 北京 2026-11-12 02:19；合并后 dshmarket 才拉得到 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **313 passed / 0 failed**（含 21 条 v0.9.15 静态判据，7 条反向验证过会红） |
-| 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:10, muted:0}`，`errors=[]`，共 12 条 findings |
-| 两条 warning | `plugin-change`（本会话记录到 1 次插件变更，属事实非异常）+ `data-at-risk`（易失数据不在默认备份分区，长期项） |
-| `trendVerdict` | **新增字段**：`{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}`；服务端算好人话、客户端只渲染 |
-| `autoScanMinutes` / `wiring` | report 返回体新增：`autoScanMinutes: 10`、`wiring.route:"registered"`；面板生成时间行下显示「接口已挂上 · 路由与工具随服务就绪后注册」 |
+| bundle 版本 | `@sidady/dsh-steward` v0.9.16，installed + enabled；ping 回报 `version:"0.9.16"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
+| npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
+| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 已 commit、**尚未 push / publish**（等用户逐次授权发版） |
+| 目录条目 | awesome-dsh-plugin PR **#14042** 状态待核对；仓库年龄门 2026-11-11T15:04:07Z 已开，第一次 regate 北京 2026-11-12 02:19 已过；合并后 dshmarket 才拉得到 |
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **337 passed / 0 failed**（v0.9.16 新增 24 条；其中 5 条关键判据反向验证过会红，含 1 条运行期求值判据） |
+| 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
+| `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
+| **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
+| `duty.jsonl` | **1 行**（boot 那班）：`trigger:"boot"`、`state:"observe-only"`、`executed:0`、seen「看了 13 条发现…其中 13 条仍在报」、6 条预备建议。L0 恒不调 plan/execute |
+| `autoScanMinutes` / `wiring` | `autoScanMinutes: 10`、`wiring.route:"registered"`；面板生成时间行下显示「接口已挂上」+「当班 · … L0 观察档」 |
+| 定时器生命周期 | L0 `setInterval` 挂在 `ctx.effect(..., 'dsh-steward: L0 duty')` 上，dispose 里 `clearInterval(dutyTimer)`——防 HMR 热重载后旧 fiber 的定时器不停 |
 | crash 日志 | **仍 4 份**，最晚 `crash-2026-11-09T23-28-38-158Z-web-boot.log`；v0.9.13 起**零新增** |
-| audit.jsonl | 40 行（2000 行上限） |
-| trend.json | **4 个点**，`cFreeBytes` 本轮 ≈74.8 GB（80363397120 B） |
-| acked.json / feedback.json | `[]` / **尚不存在**（v0.9.15 新增，没有用户点过「这条判错了」就不会建文件；首次标记后才有） |
-| 工作区 | 7 个 / 合计约 **232 MB**（采集时 243226827 B；只看「7 个」与增长判定，不要咬死体积） |
-| 插件更新 | 比对 11 个已装包：**0 个落后、1 个缓存偏旧、0 个无法比较** |
+| audit.jsonl | **42 行**（基线 40 → 42，新增 2 行是 11-11 20:26 用户手动 `clean` + `knowledge`；**本次 L0 当班后 0 行新增**，实测 `14:30Z` 之后无 plan/execute） |
+| trend.json | **5 个点** |
+| acked.json / feedback.json | `[]` / **尚不存在**（没有用户点过「这条判错了」就不会建文件） |
+| 工作区 | 7 个（回看只比「7 个」与增长判定，不咬死体积） |
+| 插件更新 | 比对 11 个已装包（回看以当天为准） |
 | 数据源覆盖 | `coverage` **7/7** = `data`，`unavailable=[]`，`errors=[]` |
-| 配置指纹 | `cordis.patch.yml` `40c7de15f6a7500d`（82811 B / 2720 行） / `profile package.json` `bc95db08d316c10c`（2837 B / 87 行）。**patch 体量在变**（60159→89178→82811 B）：回看只比 `- id:` 块数有没有减少，不要比字节 |
-| 设置 | `savedAt` 沿用旧值；新增的活设置 `ui.autoScanMinutes=10` 已穿透到 report 返回体与客户端阈值 |
-| 客户端包 | 38 个声明 `dsh.client`，checked 38 / unreadable 0 / withoutId 0；`inject` 只声明 `@deepseek-ai/dsh-client-ui-slots` |
-| 默认模型 | `model-health`：`state:"ok"`、4096 ms；默认 `workbuddy/hy4free` 可用 |
-| 兼容 / 加密备份 | 11 个声明门槛的包都适配宿主 `0.2.2-rc.1`；加密备份 2 份，最新 `dsh-config-2026-11-09-1749ba.zip`（100382581 B / 95.7 MB） |
+| 配置指纹 | 回看时重取；`patch` 体量会变，只比 `- id:` 块数有没有减少，不要比字节 |
+| 设置 | `savedAt 2026-11-11T14:00:45.505Z`；`ui.autoScanMinutes=10` 现在**一处管两处**（面板缓存刷新 + 后台当班周期），`model.probeOnReport:"cached"` |
+| 客户端包 | 38 个声明 `dsh.client`，checked 38 / unreadable 0 / withoutId 0 |
+| 默认模型 | `model-health` 可用（`probeOnReport:cached`）；注：一次 report 曾 30 s 超时，是撞上模型探活，重试 0.22 s / 200，不是路由故障 |
+| 兼容 / 加密备份 | 声明门槛的包适配宿主 `0.2.2-rc.1`；加密备份 2 份，最新 `dsh-config-2026-11-09-1749ba.zip` |
 
 > **版本号与基线数字的关系**：本表的数字是「当天真实跑出来的」，不是「必须永远等于这个」；
 > 回看时若断言数已经涨了（比如又加了几条），那是覆盖变多，记一笔新数字即可，不算退化。
 > 真正要盯的是：crash 日志有没有新增、`errors` 是否仍为空、`coverage` 是否仍 7/7、
-> `ping.wiring.route` 是否仍是 `registered`、`trendVerdict` / `autoScanMinutes` / `wiring` 三个返回体字段是否还在。
+> `ping.wiring.route` 是否仍是 `registered`、`trendVerdict` / `autoScanMinutes` / `wiring` / `duty` 四个返回体字段是否还在（v0.9.16 起 `duty` 是第四个）。
 > **回看前先做一件事**：把 `package.json` 的 version、npm 上的 latest、ping 的 version 三个对一下。
-> 三者不等说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数。
-> **本次重采时 0.9.15 还没发**（本地 0.9.15 / npm 0.9.14 / ping 0.9.15）。2026-11-11 发布完成后已回到三者一致：
-> 本地 0.9.15 / npm `dist-tags.latest` 0.9.15 / ping 0.9.15，GitHub `main` = `278857d`。
-> 发布后从 registry 反装 `npm pack @sidady/dsh-steward@0.9.15` 解包核对：17 文件、`lib/` 8 个 JS、8 个相对 import 全命中、
-> 在 tarball 里跑 `node smoke.mjs` 仍 **313 passed / 0 failed**。
+> 三者不等**通常**说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数；
+> 但也有例外（见下：本次是「故意未发」），先分清性质再下结论。
+> **本次重采时三方不等，是已知且故意的状态**：本地 0.9.16 / ping 0.9.16 / npm `dist-tags.latest` **0.9.15** / GitHub `3eca47b`。
+> 原因不是「磁盘改了 / 宿主没重载」里哪一环断了，而是 **m12744 只授权写代码、没授权发版**（沿用逐次授权）。
+> 回看时若 11-23 当天已经是 0.9.16 且三方一致，记一笔新数字即可；若仍不等，先问「是故意未发还是漏发」，别直接判 ❌。
+> v0.9.15 发布那次从 registry 反装 `npm pack @sidady/dsh-steward@0.9.15` 解包核对：17 文件、`lib/` 8 个 JS、8 个相对 import 全命中、
+> 在 tarball 里跑 `node smoke.mjs` 仍 **313 passed / 0 failed**（那一版的基线）。
 
 ## 检查表
 
@@ -139,6 +153,7 @@
 | A19 | 误报反馈闭环是否成立 | `feedback.json` + 面板「这条判错了 / 撤销判错」 + `audit.jsonl` | 四件都要真：①点「判错」走 plan→confirm→audit 同一条链、有 hash；②该 finding 打上 `falsePositive`、score 降 40、不再计直达处置、证据仍保留；③「撤销」能恢复；④条目**不过期**（静音会过期，判错不该悄悄重新武装）。任何一件没接上 → ❌ |
 | A20 | 趋势结论与好转通知是不是服务端算的人话 | report `trendVerdict` + 面板「审计趋势」结论行 + ToastHost | `trendVerdict` 必须有 `state`（worsening / recovered / stable）、`worseningStreak`、中文 `text`，由服务端 `summarizeTrend()` 算好、客户端只渲染；好转或连续 ≥2 次变差要主动弹一条（用 `generatedAt` 去重，不许反复弹）。若趋势页仍只是流水行、或只报坏不报好 → ❌ |
 | A21 | 直达按钮不造假 + 自检结果用户可见 | `ACTION_FOR` + 动作卡清单 + 面板生成时间行 | ①`ACTION_FOR` 里每一条映射都要有对应的动作卡（v0.9.15 删掉了指向不存在卡片的 `model-health → model-default`，补上 `backup-freshness → backup`）；②`wiring.route` 要显示在面板上，没挂上时给红字与恢复办法，不能只藏在 `ping` 里。若点了「去看看」跳到一个不存在的动作、或路由挂不上却面板无提示 → ❌ |
+| A22 | **L0 当班环有没有守住「只观察、不动作」**（v0.9.16 新增自主度带来的新误报面） | `duty.jsonl` + `duty` 返回体 + `audit.jsonl` 增量 + 定时器生命周期 | 五件都满足才 ✅：①每班 `state:"observe-only"`、`executed:0`，`audit.jsonl` 在当班后**零新增** plan/execute；②`duty.jsonl` 行数随时间单调增长、每班有中文 `seen`/`action`/`suggestions`（预备建议 ≠ 已执行）；③周期跟随 `ui.autoScanMinutes`，改设置后下一班按新周期重排；④`ping`/`report`/`audit` 三处都能查到 `duty`；⑤定时器挂在 `ctx.effect` 上且 dispose 清掉——**热重载/停用插件后旧 fiber 不许留下一个永不停止的当班环**。任一不满足 → ❌（尤其①，管家自己醒来后偷偷动手是比误报严重得多的越权） |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -161,7 +176,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 313 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 337 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
@@ -209,6 +224,15 @@ curl -s -o "$TMP/rep.json" -X POST http://127.0.0.1:<当前端口>/api/dsh-stewa
 node -e "const r=require(process.argv[1]); console.log('autoScanMinutes:',r.autoScanMinutes,'wiring:',r.wiring.route,'trendVerdict:',r.report.trendVerdict.state,r.report.trendVerdict.text)" "$TMP/rep.json"
 # 误报反馈：点一次「这条判错了」后应出现 feedback.json，且该 finding 带 falsePositive、score 降 40
 cat ~/.dsh/dsh-steward/feedback.json 2>/dev/null || echo '(还没有判错记录)'
+
+# 8) v0.9.16 L0 当班台账（A22）——确认「只观察不动作」
+wc -l ~/.dsh/dsh-steward/duty.jsonl
+node -e "const fs=require('fs');const L=fs.readFileSync(process.argv[1],'utf8').split('\\n').filter(Boolean).map(JSON.parse);console.log('班次',L.length,'最新',JSON.stringify(L[L.length-1]))" ~/.dsh/dsh-steward/duty.jsonl
+# 关键：把 duty.jsonl 里最新一班的 at 与 audit.jsonl 最后几行比对，
+#       当班之后若冒出新的 execute 行 = L0 越权，直接判 ❌
+tail -5 ~/.dsh/dsh-steward/audit.jsonl
+# 定时器生命周期（静态）：smoke 里那条 ctx.effect/clearInterval 判据必须全绿且反向验证过会红
+grep -n "dsh-steward: L0 duty" dsh-steward/lib/index.js
 ```
 
 > 端口每轮启动都会变，用运行时上下文里的 GUI URL，不要沿用旧端口。
@@ -262,6 +286,13 @@ cat ~/.dsh/dsh-steward/feedback.json 2>/dev/null || echo '(还没有判错记录
   （不过期、降权、但证据保留）。两者混成一个入口，两周验收就学不到东西（A19）。
 - **好转也要说**：只报坏不报好，用户永远不知道管家在变好还是在变差；但好转通知必须去重，
   否则每次体检都弹一次，本身就成了新的噪音（A20）。
+- **自主度必须可撤销、可回溯、可观测**：管家自己醒来当班，带来的是一整类**新的**误报面——
+  不是「报得不准」而是「它会不会偷偷动手 / 会不会每热重载一次就多一个永不停止的定时器」。
+  所以 L0 的边界要写成可核对的事实：`executed:0`、`audit.jsonl` 零增量、`duty.jsonl` 有中文台账、
+  定时器归 `ctx.effect` 管（A22）。**「没写 execute」不算证据，「当班后审计零新增」才算**。
+- **换尺子要记口径变更**：11-12 的封板约定（不再加功能代码）被用户重新定义核心定位后推翻，
+  这不是违背约定，是评判轴从「覆盖度」换成「自主度」。回看时若见到「说好不加却加了」，
+  先查有没有对应的用户授权与本文档的修订记录，别直接当成退化。
 
 ## 回看结论栏（11-23 填）
 
