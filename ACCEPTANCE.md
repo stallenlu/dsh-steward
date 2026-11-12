@@ -81,7 +81,7 @@
 |---|---|
 | bundle 版本 | `@sidady/dsh-steward` v0.9.16，installed + enabled；ping 回报 `version:"0.9.16"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
 | npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
-| GitHub | `stallenlu/dsh-steward` public，`main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 已 commit、**尚未 push / publish**（等用户逐次授权发版） |
+| GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 已 commit 为 `35c578e`、**尚未 push / publish**（等用户逐次授权发版） |
 | 目录条目 | awesome-dsh-plugin PR **#14042** 状态待核对；仓库年龄门 2026-11-11T15:04:07Z 已开，第一次 regate 北京 2026-11-12 02:19 已过；合并后 dshmarket 才拉得到 |
 | 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **337 passed / 0 failed**（v0.9.16 新增 24 条；其中 5 条关键判据反向验证过会红，含 1 条运行期求值判据） |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
