@@ -90,8 +90,8 @@
 | 项 | 基线值 |
 |---|---|
 | bundle 版本 | `@sidady/dsh-steward` v0.9.16，installed + enabled；ping 回报 `version:"0.9.16"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
-| npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
-| GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 系列已多次 commit（最新 HEAD 用 `git log -1` 查，回看当天以实测为准）、**均未 push / publish**（沿用「发布需用户逐次说要发」授权口径） |
+| npm 上的版本 | **`0.9.16`**（`dist-tags.latest`，2026-11-14 用户 m14210「要发」授权发布）——与本地、ping 三者一致；发布后从 registry 反装解包核对 17 文件 / `lib/` 8 个 JS / 8 个相对 import 全命中、在 tarball 里跑 `node smoke.mjs` **379 passed / 0 failed** |
+| GitHub | `stallenlu/dsh-steward` public，远端 `main` 已推到 `2d25b2e`（v0.9.16 全系列 6 个 commit，2026-11-14 push）；npm 0.9.16 同步 publish；`git status` 干净 |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
 | 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **379 passed / 0 failed**。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条 |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
@@ -119,10 +119,10 @@
 > `ping.wiring.route` 是否仍是 `registered`、`trendVerdict` / `autoScanMinutes` / `wiring` / `duty` 四个返回体字段是否还在（v0.9.16 起 `duty` 是第四个）。
 > **回看前先做一件事**：把 `package.json` 的 version、npm 上的 latest、ping 的 version 三个对一下。
 > 三者不等**通常**说明「磁盘改了 / 发了 / 宿主没重载」里有一环断了——此时面板看到的是旧代码，任何 A 项的结论都不作数；
-> 但也有例外（见下：本次是「故意未发」），先分清性质再下结论。
-> **本次重采时三方不等，是已知且故意的状态**：本地 0.9.16 / ping 0.9.16 / npm `dist-tags.latest` **0.9.15** / GitHub `3eca47b`。
-> 原因不是「磁盘改了 / 宿主没重载」里哪一环断了，而是 **m12744 只授权写代码、没授权发版**（沿用逐次授权）。
-> 回看时若 11-23 当天已经是 0.9.16 且三方一致，记一笔新数字即可；若仍不等，先问「是故意未发还是漏发」，别直接判 ❌。
+> 但先分清性质再下结论。
+> **2026-11-14 发布完成后三方已一致**：本地 0.9.16 / ping 0.9.16 / npm `dist-tags.latest` **0.9.16** / GitHub `2d25b2e`。
+> 在此之前（11-12 ~ 11-14 早间）三方不等是「故意未发」：m12744 只授权写代码、没授权发版（沿用逐次授权）；用户 m14210「要发」后才推远端 + publish。
+> 回看时若 11-23 当天仍是 0.9.16 且三方一致，记一笔新数字即可；若不等，先问「是 registry 传播延迟（约 2 分钟）还是漏发」，别直接判 ❌。
 > v0.9.15 发布那次从 registry 反装 `npm pack @sidady/dsh-steward@0.9.15` 解包核对：17 文件、`lib/` 8 个 JS、8 个相对 import 全命中、
 > 在 tarball 里跑 `node smoke.mjs` 仍 **313 passed / 0 failed**（那一版的基线）。
 
