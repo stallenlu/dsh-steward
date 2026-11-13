@@ -52,6 +52,30 @@
 changelog、`collectUpdates` 收 `hostVersion` 且返回 `advice`、免费通道缺台账时静默跳过且
 `sourcesTotal` 仍 7、客户端 version toast 有去重指纹。
 
+## v0.9.16 补记（并入未发布版，不升号）：右侧栏 tab 正文「这类内容还没有可用的查看方式」修复
+
+用户 (m13878) 截图报：右侧栏「智能管家」标签点开后，正文区显示宿主的蓝色兜底文字
+「这类内容还没有可用的查看方式。」——芯片标题还在、面板本体没了。
+
+- **根因不是插件没挂载，是二次重挂把正文拆了**。旧 `apply()` 把右侧 tab 的「类型注册 +
+  正文槽位 + 浮层提醒」全塞进 `mountRight()`，而 `mountFor(entry)` 每次都先 `disposeAllNow()`
+  全拆一遍。`ui.entry='right'` 时：先挂 `both`（正文注册好）→ 异步读到设置再挂 `right`
+  → 这第二次重挂把刚注册好的 `sidebar.right.pane.tab` 正文 dispose 掉；更糟的是正文还嵌在
+  `ctx.inject(['sidebarRightTabs'])` 的回调里，服务重载时机一错也丢。宿主 `TabSlot` 用
+  `entryKey = definition?.id ?? tab.kind` 找 keyed 槽位，找不到就渲染 `tab.unavailable`
+  兜底；芯片标题是打开时捕获的，所以「标题在、正文空」。
+- **修法三件**：①右侧整套按 `wantRight` **幂等**挂/卸（`rightMounted` 门，wantRight 不变就不拆
+  不挂），正文槽位 `ctx.slots.inject('sidebar.right.pane.tab', …)` 提到 `apply()` 顶层直接注册，
+  不再依赖 `sidebarRightTabs` 服务的回调——对照 dsh-config-manager / dsh-better-sidebar /
+  dsh-univer-office 都是这么做的；②浮层 ToastHost 用独立 `ctx.effect` 常驻，不进任何拆装列表
+  （旧版被 `disposeAllNow()` 误清，提醒一直没真正生效）；③left/main 单独幂等挂/卸，`ui.entry`
+  三值语义不变。
+- **验证**：smoke 新增 5 条静态判据 + 4 条运行期 harness 断言（把真正的 `apply()` body 抠出来，
+  用假 Cordis ctx 跑一遍「both → settings=right」重挂，数正文槽位到底被注册/拆了几次）。
+  静态判据看不出的二次重挂竞态，运行期 harness 能看出来。
+
+这是显示 / 生命周期 bug，不碰授权面、不碰数据层、不新增检测项，随 0.9.16 一起发。
+
 ## v0.9.15（把「该有的职能」补齐：时间、设置、反馈、趋势、直达）
 
 这一轮按职能设定逐条对照代码，补上八处「功能上没考虑到、但角色上应该有」的缺口。
@@ -407,7 +431,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），370 项断言（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
+- `smoke.mjs`：本地验证（不启动宿主），379 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```

@@ -1627,6 +1627,94 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('free lane: reads only the one private ledger, no error/coverage key', vbReport.includes("'our-free-model', 'availability.json'") && !vbReport.includes("step: 'free-lane'"));
 }
 
+// — v0.9.16（未发布）右侧栏 tab 正文修复：静态 + 运行期判据 —
+{
+  const rightSrc = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+
+  check('right tab body is registered at the top level of mountRight',
+    rightSrc.includes("rightDisposers.push(ctx.slots.inject('sidebar.right.pane.tab'") &&
+    !rightSrc.includes('const disposers = [];'));
+  check('mountRight has an idempotent guard (rightMounted)',
+    rightSrc.includes('if (rightMounted) return;'));
+  check('toast overlay is registered via its own ctx.effect, not the entry disposer list',
+    rightSrc.includes("'dsh-steward: toast overlay'") &&
+    !rightSrc.includes("currentDisposers.push(ctx.slots.inject('shell.overlay'"));
+  check('scoped ctx effect owns the right tab type lifecycle',
+    rightSrc.includes('c.effect(() => {') && rightSrc.includes("'dsh-steward: right tab type'"));
+  check('ui.entry keeps its three values and per-value mount decisions',
+    rightSrc.includes("entry !== 'right'") && rightSrc.includes("entry !== 'left'") &&
+    rightSrc.includes("v === 'left' || v === 'right' || v === 'both'"));
+}
+
+// 运行期：把真正的 apply() body 抠出来，用假 Cordis ctx 跑一遍「both → settings=right」重挂，
+// 数一数右侧正文槽位到底被注册/拆掉了几次。静态判据看不出的二次重挂竞态，这里能看出来。
+await (async () => {
+  let R = { error: null, bodyCount: -1, bodyLive: false, toastCount: -1, toastLive: false, leftLive: -1 };
+  try {
+    const src = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+    const head = '      apply(ctx) {';
+    const tail = '      },' + String.fromCharCode(10) + '    };' + String.fromCharCode(10) + '  },' + String.fromCharCode(10) + '});';
+    const hs = src.indexOf(head);
+    const ts = src.lastIndexOf(tail);
+    if (hs < 0 || ts <= hs) throw new Error('apply body anchors not found');
+    const bodyText = src.slice(hs + head.length, ts);
+
+    const regs = [];
+    const live = new Set();
+    const slots = {
+      inject: (name, factory) => {
+        const reg = factory();
+        return () => { live.delete(reg); };
+      },
+      register: (opts) => {
+        const reg = { slot: opts && opts.name, key: opts && (opts.key || opts.id) };
+        regs.push(reg);
+        live.add(reg);
+        return reg;
+      },
+    };
+    const scoped = {
+      slots,
+      sidebarRightTabs: { register: () => () => {} },
+      effect: (fn) => { fn(); return () => {}; },
+      get: () => undefined,
+    };
+    const ctx = {
+      slots,
+      effect: (fn) => { fn(); return () => {}; },
+      inject: (deps, cb) => { cb(scoped); return () => {}; },
+      get: () => undefined,
+    };
+    const call = () => Promise.resolve({ settings: { ui: { entry: 'right' } } });
+    const prelude = 'var ENTRY_APPLIER = null; var PANEL_NAVIGATOR = null; var PANEL_ACK = null;' + String.fromCharCode(10);
+    const run = new Function(
+      'ctx', 'PANEL_ID', 'Panel', 'PanelIcon', 'h', 'ToastHost', 'call',
+      prelude + bodyText
+    );
+    run(ctx, 'dsh-steward', function () {}, function () {}, function () {}, function () {}, call);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const bodies = regs.filter((r) => r.slot === 'sidebar.right.pane.tab' && r.key === 'dsh-steward');
+    const toasts = regs.filter((r) => r.slot === 'shell.overlay');
+    const left = regs.filter((r) => r.slot === 'sidebar.panellist' || r.slot === 'main');
+    R.bodyCount = bodies.length;
+    R.bodyLive = bodies.length === 1 && live.has(bodies[0]);
+    R.toastCount = toasts.length;
+    R.toastLive = toasts.length === 1 && live.has(toasts[0]);
+    R.leftLive = left.filter((r) => live.has(r)).length;
+  } catch (e) {
+    R.error = String(e);
+  }
+  const why = R.error || JSON.stringify(R);
+  check('runtime: exactly one right-tab body registration survives a settings-driven remount',
+    !R.error && R.bodyCount === 1, why);
+  check('runtime: the right-tab body stays live after the remount',
+    !R.error && R.bodyLive === true, why);
+  check('runtime: the toast overlay stays live after the remount',
+    !R.error && R.toastLive === true, why);
+  check('runtime: ui.entry=right drops the left/main entries',
+    !R.error && R.leftLive === 0, why);
+})();
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

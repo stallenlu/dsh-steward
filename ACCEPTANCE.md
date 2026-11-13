@@ -83,6 +83,7 @@
 > - **A22** 专盯这次新增的自主度带来的新误报面：管家自己醒来后有没有制造噪音 / 有没有偷偷动手 / 定时器有没有泄漏。
 >
 > 设计文档另存 Mnemon `42042339-cc9d-4ecb-8d71-dc3ade7dffdd`（与定稿 f7e5a482 并列保留，不覆盖）。
+> **2026-11-14 第二补记（并入未发布的 0.9.16，不升号）**：修右侧栏「智能管家」tab 点开后只剩标题、正文落到宿主兜底「这类内容还没有可用的查看方式。」（用户 m13878 截图）。根因：ui.entry 为 right 时 apply() 先挂 both、异步读到设置再挂 right，第二次 disposeAllNow() 把刚注册的 sidebar.right.pane.tab 正文槽位拆掉；且正文注册嵌在 sidebarRightTabs 的 inject 回调里。改法：右侧整套按 rightMounted 幂等挂卸、正文槽位顶层独立注册、ToastHost 独立 ctx.effect 常驻（旧版被 disposeAllNow 误清，提醒一直没真正生效）。新增 A25 一行与 5 静态 + 4 运行期 harness 断言（运行期把真正 apply() body 抠出来跑一遍 both→right 重挂，数正文槽位存活次数）。基线 370 → **379 断言**。显示 / 生命周期 bug，不碰授权面、不碰数据层。
 
 ## 基线快照（2026-11-12 22:33 采集（v0.9.16 重采），回看时用来对照）
 
@@ -92,7 +93,7 @@
 | npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
 | GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 系列已多次 commit（最新 HEAD 用 `git log -1` 查，回看当天以实测为准）、**均未 push / publish**（沿用「发布需用户逐次说要发」授权口径） |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **370 passed / 0 failed**。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、本轮 7 条 |
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **379 passed / 0 failed**。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条 |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
 | `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
 | **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
@@ -165,6 +166,7 @@
 | A22 | **L0 当班环有没有守住「只观察、不动作」**（v0.9.16 新增自主度带来的新误报面） | `duty.jsonl` + `duty` 返回体 + `audit.jsonl` 增量 + 定时器生命周期 | 五件都满足才 ✅：①每班 `state:"observe-only"`、`executed:0`，`audit.jsonl` 在当班后**零新增** plan/execute；②`duty.jsonl` 行数随时间单调增长、每班有中文 `seen`/`action`/`suggestions`（预备建议 ≠ 已执行）；③周期跟随 `ui.autoScanMinutes`，改设置后下一班按新周期重排；④`ping`/`report`/`audit` 三处都能查到 `duty`；⑤定时器挂在 `ctx.effect` 上且 dispose 清掉——**热重载/停用插件后旧 fiber 不许留下一个永不停止的当班环**。任一不满足 → ❌（尤其①，管家自己醒来后偷偷动手是比误报严重得多的越权） |
 | A23 | 插件新版本的利弊/风险/建议是不是服务端算的人话、且不编造 | report `updates.advice` + `plugin-updates` finding + ToastHost 专用 version toast | 四件都满足才 ✅：①`advice` 有 `outdatedCount`/`rows`/`fingerprint`/`text`/`recommendation`/`toastTitle`/`toastBody`，三档风险（宿主门槛不符 high / 预览版或跨 ≥5 版本 medium / 常规小步 low）各自能触发；②`text` 明写「优点 / 风险 / 不编造具体修复内容」，不谎称读了 changelog；③`recommendation` 明写「管家只读分析、不代升级」；④toast 用 `fingerprint` 去重、不改 `toastWorthy`（info 级 finding 仍不全局弹）。若把「有新版」直接当成「该升」、或编造修复内容、或每次体检反复弹同一条 → ❌ |
 | A24 | 免费通道运行期故障是不是被「只读、不越界」地接住 | `$DSH_HOME/our-free-model/availability.json` + report `freeLane` + `free-lane-health` finding | 四件都满足才 ✅：①只读**一家**第三方插件私有台账，抓「标着 available 却记着上游失败 detail」与全 stale；②缺台账/解析失败时**静默跳过**——不加 coverage 键（`sourcesTotal` 仍 7）、不 push 采集 error、不加 finding，但返回体 `freeLane` 让跳过可观测；③finding 是 info 级、不进 `ACTIONABLE_IDS`、不动别的插件文件；④明写边界（中期应等宿主把插件级上游失败汇进 `diagnostics.jsonl`）。若把「没装该插件」报成体检退化、或据此自动改配置/停用插件 → ❌ |
+| A25 | 右侧栏「智能管家」tab 的正文有没有在设置切换后仍挂得住 | 右侧栏 tab 正文 + settings `ui.entry` + ToastHost + `smoke.mjs` 运行期 harness | 五件都满足才 ✅：①`ui.entry=right` 时初次挂 both、异步读到设置再挂 right，**正文槽位不许被二次重挂 dispose**——点开 tab 显示面板本体而不是宿主兜底「这类内容还没有可用的查看方式。」；②正文槽位 `sidebar.right.pane.tab`（key=PANEL_ID）在 apply() 顶层独立注册，不嵌在 `sidebarRightTabs` 的 inject 回调里；③右侧整套用 `rightMounted` 幂等门，wantRight 不变就不拆不挂；④ToastHost 用独立 `ctx.effect` 常驻、不进任何拆装列表（新版提醒会真正弹出）；⑤`ui.entry` 三值（both/left/right）语义不变，right 时左侧入口与 main 全拆。运行期 harness 断言「正文恰好注册 1 次且两次重挂后仍存活、ToastHost 仍存活、right 时 leftLive=0」。若切到 right 后面板变空、或静态判据全绿但运行期正文已丢 → ❌ |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -187,7 +189,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 370 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 379 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
