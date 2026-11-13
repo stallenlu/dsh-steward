@@ -90,7 +90,7 @@
 |---|---|
 | bundle 版本 | `@sidady/dsh-steward` v0.9.16，installed + enabled；ping 回报 `version:"0.9.16"` 且 `wiring.route:"registered"`（三条 via 全 inject） |
 | npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
-| GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 已 commit 为 `35c578e`、**尚未 push / publish**（等用户逐次授权发版） |
+| GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 系列已多次 commit（最新 HEAD 用 `git log -1` 查，回看当天以实测为准）、**均未 push / publish**（沿用「发布需用户逐次说要发」授权口径） |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
 | 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **370 passed / 0 failed**。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、本轮 7 条 |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
