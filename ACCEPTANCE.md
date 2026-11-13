@@ -66,6 +66,7 @@
 > 所以 A17–A21 一律判「接没接上 / 说没说清」，不判「代码写得对不对」。
 >
 > **2026-11-12 八次修订（v0.9.16）：基线升到 v0.9.16 / 337 断言，新增 A22 一行。**
+> **2026-11-13 补记（并入未发布的 0.9.16，不升号）**：修掉 Finding 卡「去处置」按钮白底白字（用户 m13209 截图报的纯白矩形）——`Btn` 里 primary 反相前景色被调用方 `tone` 顶掉，而 `C.text` 与 `C.solid` 同源于 `--dsw-alias-label-primary`。改法：删掉误传的 `tone`、`Btn` 在 primary 时强制 `C.on`，并补 4 条防回归静态判据（4/4 反向验证会红）。基线 337 → **341 断言**。这是显示 bug，不碰授权面、不碰数据层，随 0.9.16 一起发。
 > **口径变更，必须如实记**：11-12 曾按覆盖矩阵收口、约定「11-23 回看前不再加功能代码」；
 > 但用户随后重新定义了核心定位（m12723「管家不只是听命令的工具，而是在一定授权内可以安全自主完成职责任务的智能帮手」），
 > 并授权「现在做」（m12744）——那把尺子从「覆盖度」换成了「自主度」，原封板结论因此失效，这次不是违背约定而是**换了一把尺子重排权重**：
@@ -83,7 +84,7 @@
 | npm 上的版本 | **`0.9.15`**（`dist-tags.latest`）——**本机 0.9.16 尚未 publish**：m12744 只授权「现在做」L0 当班环，沿用「发布需用户逐次说要发」的口径，不主动推远端。回看时若仍不等，先确认是「故意未发」还是漏发 |
 | GitHub | `stallenlu/dsh-steward` public，远端 `main` 最新提交 `3eca47b`（docs 同步到 0.9.15）；本地 v0.9.16 已 commit 为 `35c578e`、**尚未 push / publish**（等用户逐次授权发版） |
 | 目录条目 | awesome-dsh-plugin PR **#14042** 状态待核对；仓库年龄门 2026-11-11T15:04:07Z 已开，第一次 regate 北京 2026-11-12 02:19 已过；合并后 dshmarket 才拉得到 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **337 passed / 0 failed**（v0.9.16 新增 24 条；其中 5 条关键判据反向验证过会红，含 1 条运行期求值判据） |
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **341 passed / 0 failed**（v0.9.16 新增 24 条 + 白色按钮回归 4 条；关键判据反向验证过会红，含 L0 定时器 5 条、白按钮 4 条、1 条运行期求值判据） |
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
 | `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
 | **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
@@ -176,7 +177,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 337 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（基线 341 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |

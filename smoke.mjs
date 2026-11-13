@@ -1548,6 +1548,21 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
+{
+  // ---- 白色按钮回归：primary 按钮必须反相，绝不能被调用方的 tone 顶掉 ----
+  // C.text 与 C.solid 都映射到 --dsw-alias-label-primary，深色主题下解析成白色；
+  // 一旦 color 用了 tone，primary 就变成白底白字 = 看不见字的纯白矩形。
+  const wbClient = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  check('Btn forces the inverted foreground for primary buttons',
+    wbClient.indexOf('color: props.primary && !props.disabled ? C.on : (props.tone || C.text)') >= 0);
+  check('the old tone-wins colour expression is gone',
+    wbClient.indexOf('color: props.tone || (props.primary') < 0);
+  check('no primary button call site passes a tone',
+    (wbClient.match(/primary:\s*true\s*,\s*tone:/g) || []).length === 0);
+  check('the finding go-to-action button stays a plain primary button',
+    wbClient.indexOf('h(Btn, { onClick: props.onGo, primary: true }') >= 0);
+}
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
