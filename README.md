@@ -27,6 +27,31 @@
 静态判据（smoke）钉住：周期定时器存在且带重入/去抖、当班全程不触碰 plan/execute、
 `dutyBriefing` 是纯函数且排除静音/判错项、三处返回体都带 duty、面板显示当班状态与台账。
 
+## v0.9.16 补记（并入未发布版，不升号）：升级利弊分析 + 免费通道运行期体检
+
+两条都来自用户现场反馈，**全只读、不碰授权面**：
+
+- **插件新版本，管家会主动提醒并给利弊与建议**（m13463）。`collectUpdates` 现在多收一个
+  `hostVersion`（宿主版本取自崩溃日志的 `meta.app`），`analyzeUpgrades()` 纯函数从市场缓存的
+  `versions[]` / `engines.dsh` 派生三档风险：宿主门槛不符（high，升了可能直接起不来）、预览版 /
+  跨 ≥5 个版本（medium）、常规小步（low）；把「优点 / 风险 / 分级 / 处理建议」写成中文人话塞进
+  `plugin-updates` 的 detail 与 recommendation，并在面板用 `updates.advice.fingerprint` 弹一条
+  **去重**的专用提醒（不改 `toastWorthy`，info 级 finding 仍不全局放开）。
+  **边界**：市场缓存里没有 changelog，优点只写「跟随上游 / 依赖对齐 / 减少碎片」这类可证的，
+  不编造具体修复内容；DSH 宿主自身没有可读的新版本信号源，本版只分析市场缓存里的**插件**
+  新版本，不假装能测宿主自更新。
+- **our-free-model 的运行期故障，管家能看见了**（m13398）。`collectFreeLaneHealth()` 只读
+  `$DSH_HOME/our-free-model/availability.json`，专抓「标着 available、最近一次探测却失败」的
+  自相矛盾与「探测结果全部 stale」，出一条 info 级 `free-lane-health`。
+  **边界**：这是**单一第三方插件**的 best-effort 加分项，没装它属正常，因此**不加 coverage 键、
+  不 push 采集错误**（不给所有没装它的用户造永久误报），返回体用 `freeLane` 让「跳过」在 data
+  层可观测；不读别家私有台账、不碰别的插件代码。中期更稳的做法是等宿主把插件级上游失败汇进
+  `bot/logs/diagnostics.jsonl`，管家接一层而非接 N 家。
+
+静态判据（smoke）钉住：三档风险各自触发、`fingerprint` 确定性且顺序无关、利弊文案不编造
+changelog、`collectUpdates` 收 `hostVersion` 且返回 `advice`、免费通道缺台账时静默跳过且
+`sourcesTotal` 仍 7、客户端 version toast 有去重指纹。
+
 ## v0.9.15（把「该有的职能」补齐：时间、设置、反馈、趋势、直达）
 
 这一轮按职能设定逐条对照代码，补上八处「功能上没考虑到、但角色上应该有」的缺口。
@@ -382,7 +407,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），341 项断言（含打包自检、时间戳、配色、「延迟注册」、L0 当班环与白色按钮回归等静态规约判据）。
+- `smoke.mjs`：本地验证（不启动宿主），370 项断言（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```

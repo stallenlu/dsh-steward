@@ -6,7 +6,7 @@
  * probes the fail-soft path (unreadable directories) and the real machine
  * (best-effort) to confirm the parser works on actual crash logs.
  */
-import { collectReport, parseBootFailure, dutyBriefing } from './lib/report.js';
+import { collectReport, parseBootFailure, dutyBriefing, analyzeUpgrades, collectFreeLaneHealth } from './lib/report.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -1561,6 +1561,70 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
     (wbClient.match(/primary:\s*true\s*,\s*tone:/g) || []).length === 0);
   check('the finding go-to-action button stays a plain primary button',
     wbClient.indexOf('h(Btn, { onClick: props.onGo, primary: true }') >= 0);
+}
+
+{
+  // — v0.9.16（未发布）：升级利弊分析 (m13463) + 免费通道运行期健康 (m13398) —
+  const AU = analyzeUpgrades;
+  const PKG_HI = { 'dsh-x': { latest: '2.0.0', versions: ['1.0.0', '2.0.0'], engines: { dsh: '^0.3.0' } } };
+  const hi = AU([{ name: 'dsh-x', installed: '1.0.0', latest: '2.0.0' }], PKG_HI, '0.2.2-rc.1');
+  check('upgrade advice: a host-version mismatch is high risk', hi.rows[0].risk === 'high', JSON.stringify(hi.rows[0]));
+  check('upgrade advice: high risk names the boot consequence', hi.rows[0].reasons.join(' ').includes('起不来'), JSON.stringify(hi.rows[0].reasons));
+  const md = AU([{ name: 'dsh-y', installed: '1.0.0', latest: '2.0.0-beta.1' }], { 'dsh-y': { latest: '2.0.0-beta.1', versions: ['1.0.0', '2.0.0-beta.1'] } }, '0.2.2-rc.1');
+  check('upgrade advice: a prerelease target is medium risk', md.rows[0].risk === 'medium', JSON.stringify(md.rows[0]));
+  const sk = AU([{ name: 'dsh-z', installed: '1.0.0', latest: '9.0.0' }], { 'dsh-z': { latest: '9.0.0', versions: ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '5.0.0', '6.0.0', '9.0.0'] } }, '0.2.2-rc.1');
+  check('upgrade advice: skipping >=5 releases is medium risk', sk.rows[0].risk === 'medium' && sk.rows[0].skipped >= 5, JSON.stringify(sk.rows[0]));
+  const lo = AU([{ name: 'dsh-w', installed: '1.0.0', latest: '1.0.1' }], { 'dsh-w': { latest: '1.0.1', versions: ['1.0.0', '1.0.1'] } }, null);
+  check('upgrade advice: a plain small step is low risk', lo.rows[0].risk === 'low', JSON.stringify(lo.rows[0]));
+  check('upgrade advice: text states benefits without inventing a changelog', hi.text.includes('优点') && hi.text.includes('不编造具体修复内容'), hi.text);
+  check('upgrade advice: text states the boot risk', hi.text.includes('boot'), hi.text);
+  check('upgrade advice: recommendation is read-only, no auto-upgrade', hi.recommendation.includes('不代升级') && hi.recommendation.includes('逐个'), hi.recommendation);
+  check('upgrade advice: toast words are written by the server', hi.toastTitle.includes('风险') && hi.toastBody.includes('优点'), hi.toastTitle);
+  const hi2 = AU([{ name: 'dsh-x', installed: '1.0.0', latest: '2.0.0' }], PKG_HI, '0.2.2-rc.1');
+  check('upgrade advice: fingerprint is a stable 8-hex digest', /^[0-9a-f]{8}$/.test(hi.fingerprint) && hi.fingerprint === hi2.fingerprint, hi.fingerprint);
+  const fpA = AU([{ name: 'a', installed: '1.0.0', latest: '2.0.0' }, { name: 'b', installed: '1.0.0', latest: '3.0.0' }], {}, '0.2.2-rc.1');
+  const fpB = AU([{ name: 'b', installed: '1.0.0', latest: '3.0.0' }, { name: 'a', installed: '1.0.0', latest: '2.0.0' }], {}, '0.2.2-rc.1');
+  check('upgrade advice: fingerprint is order-independent', fpA.fingerprint === fpB.fingerprint, fpA.fingerprint + ' vs ' + fpB.fingerprint);
+  const emp = AU([], {}, null);
+  check('upgrade advice: no outdated items yields count 0 but a fingerprint', emp.outdatedCount === 0 && /^[0-9a-f]{8}$/.test(emp.fingerprint), emp.fingerprint);
+  const AVAIL = JSON.stringify({ version: 1, at: 0, results: {
+    'model-a': { state: 'available', detail: 'OpenCode free inference requires a local Bun executable', at: '2026-11-13T12:00:00Z', stale: true },
+    'model-b': { state: 'unknown', detail: 'upstream request failed', at: '2026-11-13T13:00:00Z', stale: true },
+    'model-c': { state: 'available', at: '2026-11-13T14:00:00Z', stale: true },
+  } });
+  const flIo = { readDir: () => [], stat: () => ({ __error: 'x' }), readText: (f) => (f.endsWith('availability.json') ? AVAIL : { __error: 'no' }) };
+  const fl = collectFreeLaneHealth({ dshHome: 'H' }, flIo);
+  check('free lane: contradictory available-but-failing is caught', fl.available && fl.contradictory.length === 1 && fl.contradictory[0].name === 'model-a', JSON.stringify(fl));
+  check('free lane: both detail-bearing models are collected as failing', fl.failing.length === 2, JSON.stringify(fl.failing));
+  check('free lane: allStale is true when every entry is stale', fl.allStale === true && fl.checked === 3, JSON.stringify(fl));
+  check('free lane: newestAt is the max probe timestamp', fl.newestAt === '2026-11-13T14:00:00Z', String(fl.newestAt));
+  const flMiss = collectFreeLaneHealth({ dshHome: 'H' }, { readText: () => ({ __error: 'ENOENT' }) });
+  check('free lane: a missing private ledger is a silent, observable skip', flMiss.available === false && flMiss.failing.length === 0, JSON.stringify(flMiss));
+  function flDataIo(availText) {
+    const base = dataIo();
+    return { readDir: base.readDir, stat: base.stat,
+      readText(file) { return file.endsWith('availability.json') ? availText : base.readText(file); } };
+  }
+  const flReport = collectReport({
+    now: new Date('2026-11-09T13:00:00Z'), bootedAt: new Date('2026-11-09T00:00:00Z'),
+    env: { APPDATA: 'C:\\\\Users\\\\demo\\\\AppData\\\\Roaming', DSH_HOME: 'C:\\\\Users\\\\demo\\\\.dsh' },
+    platform: 'win32', profileDirs: ['C:\\\\p'], io: flDataIo(AVAIL),
+  });
+  check('free lane: report surfaces a read-only info finding', flReport.findings.some((f) => f.id === 'free-lane-health'), JSON.stringify(flReport.errors));
+  check('free lane: an optional signal adds NO coverage source', flReport.coverage.sourcesTotal === 7, JSON.stringify(flReport.coverage));
+  check('free lane: reading the private ledger adds no collection error', !flReport.errors.some((e) => String(e.step || '').includes('free-lane')), JSON.stringify(flReport.errors));
+  check('free lane: report body exposes freeLane for observability', !!(flReport.freeLane && flReport.freeLane.available === true), JSON.stringify(flReport.freeLane));
+  check('free lane: with no ledger the report shows a skip, not a finding', !!(dataReport.freeLane && dataReport.freeLane.available === false) && !dataReport.findings.some((f) => f.id === 'free-lane-health'), JSON.stringify(dataReport.freeLane));
+  check('upgrade advice: report.updates.advice is present with a count', !!(flReport.updates && flReport.updates.advice && flReport.updates.advice.outdatedCount === 2), JSON.stringify(flReport.updates && flReport.updates.advice));
+  const pu = flReport.findings.find((f) => f.id === 'plugin-updates');
+  check('upgrade advice: plugin-updates detail carries the analysis', !!(pu && pu.detail.includes('优点') && pu.detail.includes('不编造')), pu && pu.detail);
+  check('upgrade advice: plugin-updates recommendation came from advice', !!(pu && pu.recommendation.includes('不代升级')), pu && pu.recommendation);
+  const vbClient = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  check('upgrade toast: client reads report.updates.advice', vbClient.includes('report.updates.advice') && vbClient.includes("'version-' + ua.fingerprint"));
+  check('upgrade toast: the version toast is gated and de-duplicated', vbClient.includes("toastConfig.mode !== 'off'") && vbClient.includes('!toastedIds.has(vkey)'));
+  const vbReport = fs.readFileSync(path.join(here, 'lib', 'report.js'), 'utf8');
+  check('upgrade advice: collectUpdates takes hostVersion and returns advice', vbReport.includes('export function collectUpdates(paths, io, errors, hostVersion)') && vbReport.includes('analyzeUpgrades(outdated, packages, hostVersion)'));
+  check('free lane: reads only the one private ledger, no error/coverage key', vbReport.includes("'our-free-model', 'availability.json'") && !vbReport.includes("step: 'free-lane'"));
 }
 
 console.log('');
