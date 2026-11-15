@@ -1,6 +1,25 @@
 # dsh-steward — 智能管家（体检 + 授权执行）插件
 
-**状态：v0.9.22（前两张卡通栏 + 配色向参照面板看齐）已发布 npm + GitHub，并已在本机重装生效 —— 源码树 / profile / 本机安装副本 / npm / GitHub `851cba7` 五方一致；浏览器需刷新页面（F5/Ctrl+R，不是重启）**
+**状态：v0.9.23（信息栏可读性：行底色从 hover 态换成不透明面板层）代码已落地，尚未发版 —— 本机当前仍跑 registry 0.9.22 tarball，须发版 + 重装 + 刷新页面后可见**
+
+## v0.9.23（信息栏可读性：行底色从 hover 态换成不透明面板层）
+
+用户反馈「信息栏的配色，不如截图1那样更容易呈现文字信息」。截图1 是 dsh-disk-cleaner 面板。读了它的一手源码，差距不在审美而在语义用错：
+
+- 它的行与卡一律 `background: var(--dsb-surface)` —— 不透明的面板层；`--dsb-hover` 只出现在 `:hover` 规则里。
+- 我的 `Finding` 折叠行与展开卡都写 `background: C.fill`，而 `C.fill = THEME.hover = --dsw-alias-interactive-bg-hover`，深色主题下是 **8% 白的半透明**。整片列表没有层级，文字像蒙了一层灰。
+
+这和 v0.9.19 修掉的「拿 hover 色当卡片底色」是同一类错用，当时只改了简报卡，列表漏了。
+
+改法（`lib/client.js`，全在 baseline 标记块之外）：
+
+1. 所有承载文字的带与行 —— `Finding` 折叠/展开、`ActionRow`、隐藏组带、降级告警带、台账说明带、趋势结论带、当班台账带、台账行与趋势行、pending 气泡、设置说明带与 saved/saveError —— 底色从 `C.fill` 换成 `THEME.surface`。
+2. 正文层级提一档：折叠预览 11.5px→12px；证据行从 `C.faint`（tertiary）11px 换成 `C.sub`（secondary）11.5px —— 证据是信息不是装饰。
+3. 静音行不再整块 `opacity: 0.55`（那等于把字也洗掉），改 0.72，配合左侧灰边已经足够表达「这条被静音」。
+4. 裸 `borderRadius: 6` / `8` 换成 `THEME.radiusSm` token。
+5. **保留** ChatBar 输入条的 `C.fill`：输入框该看起来可填，那是交互态而非容器。smoke 里有一条断言专门钉住「全文件只剩这一处 `background: C.fill`，且它在 ChatBar 里」。
+
+验证：静态 9 条 + 运行期 3 条（把真 `Finding` 源码用 `new Function` 注入假依赖，折叠/展开/静音三态真渲染后读落到 style 对象上的 `background` 与 `opacity`）。反向验证：把 `lib/client.js` 退回 0.9.22，这 12 条全部转红。
 
 ## v0.9.22（前两张卡填满宽度，配色向 FreeLLMAPI 面板看齐）
 
@@ -509,7 +528,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），458 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
+- `smoke.mjs`：本地验证（不启动宿主），470 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```

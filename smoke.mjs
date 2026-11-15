@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.22 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.22');
+  check('v0.9.23 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.23');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1987,6 +1987,73 @@ await (async () => {
     check('v0.9.22 README documents the width and palette change', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.22（') >= 0);
   }
 
+  // —— v0.9.23：信息栏可读性（m16265「不如截图1那样更容易呈现文字信息」）——
+  {
+    const c923 = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+    const fStart = c923.indexOf('function Finding(props) {');
+    const fEnd = fStart < 0 ? -1 : c923.indexOf('\n    }\n', fStart);
+    const findingSrc = fEnd < 0 ? '' : c923.slice(fStart, fEnd + 6);
+    const barStart = c923.indexOf('function ChatBar(props) {');
+    const barEnd = barStart < 0 ? -1 : c923.indexOf('\n    function ', barStart + 10);
+    const barSrc = barEnd < 0 ? '' : c923.slice(barStart, barEnd);
+
+    check('v0.9.23 finding slice was located', findingSrc.length > 800, 'len=' + findingSrc.length);
+    check('v0.9.23: the hover wash survives as a row background in exactly one place',
+      c923.split('background: C.fill').length - 1 === 1,
+      'count=' + (c923.split('background: C.fill').length - 1));
+    check('v0.9.23: that one place is the chat input, which should look fillable',
+      barSrc.length > 5000 && barSrc.indexOf('background: C.fill') >= 0, 'barLen=' + barSrc.length);
+    check('v0.9.23: finding rows paint on the opaque panel surface',
+      findingSrc.indexOf('background: THEME.surface') >= 0 && findingSrc.indexOf('background: C.fill') < 0);
+    check('v0.9.23: a muted row dims to 0.72 instead of washing out at 0.55',
+      findingSrc.indexOf('opacity: f.muted ? 0.72 : 1') >= 0 && findingSrc.indexOf('0.55') < 0);
+    check('v0.9.23: the evidence line reads as secondary text, not tertiary',
+      /fontSize: 11\.5, color: C\.sub, marginTop: 6, wordBreak/.test(findingSrc) && !/color: C\.faint, marginTop: 6/.test(findingSrc));
+    check('v0.9.23: row radii come from the small-radius token, not a bare 6',
+      /borderRadius: THEME\.radiusSm/.test(findingSrc) && !/borderRadius: 6\b/.test(findingSrc));
+    check('v0.9.23: ledger and trend rows moved onto the same surface',
+      c923.indexOf('background: THEME.surface, marginBottom: 4') >= 0);
+    check('v0.9.23 README documents the readability fix',
+      fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.23（') >= 0);
+
+    // 运行期：真把 Finding 渲染两遍，看落到 style 对象上的值，而不是只读源码文本。
+    let rt923 = null;
+    try {
+      const C9 = { text: '#text', sub: '#sub', faint: '#faint', line: '#line', fill: '#fill', bg: '#bg',
+        solid: '#solid', on: '#on', critical: '#crit', warning: '#warn', info: '#info', ok: '#ok' };
+      const THEME9 = { radius: '12px', radiusSm: '8px', gap: '12px', surface: '#surface', card: '#card', hover: '#hover' };
+      const mk = function (tag, props) { return { tag: tag, props: props || {}, kids: Array.prototype.slice.call(arguments, 2) }; };
+      const stub = function (name) { return function () { return mk.apply(null, [name].concat(Array.prototype.slice.call(arguments, 1))); }; };
+      const Finding923 = new Function('h', 'Badge', 'Btn', 'TinyBtn', 'SEV', 'C', 'THEME', 'localStamp',
+        findingSrc + String.fromCharCode(10) + 'return Finding;')(
+        mk, stub('Badge'), stub('Btn'), stub('TinyBtn'),
+        { critical: { label: '严重', color: '#crit' }, warning: { label: '留意', color: '#warn' },
+          info: { label: '提示', color: '#info' }, ok: { label: '正常', color: '#ok' } },
+        C9, THEME9, function () { return '刚刚'; });
+      const rootStyle = (node) => {
+        const stack = [node];
+        while (stack.length) {
+          const n = stack.shift();
+          if (!n || typeof n !== 'object' || !n.tag) continue;
+          if (n.props && n.props.style) return n.props.style;
+          (n.kids || []).forEach((k) => { if (Array.isArray(k)) k.forEach((x) => stack.push(x)); else stack.push(k); });
+        }
+        return null;
+      };
+      const f = { id: 'x', severity: 'info', title: '一条提示', detail: '正文', score: 20 };
+      const collapsed = rootStyle(Finding923({ finding: f, expanded: false, onToggle: function () {} }));
+      const expanded = rootStyle(Finding923({ finding: f, expanded: true, onToggle: function () {} }));
+      const muted = rootStyle(Finding923({ finding: { id: 'y', severity: 'info', title: '静音项', muted: true }, expanded: false, onToggle: function () {} }));
+      check('v0.9.23 runtime: a collapsed row really renders on the panel surface',
+        !!collapsed && collapsed.background === THEME9.surface, JSON.stringify(collapsed && collapsed.background));
+      check('v0.9.23 runtime: an expanded row really renders on the panel surface',
+        !!expanded && expanded.background === THEME9.surface, JSON.stringify(expanded && expanded.background));
+      check('v0.9.23 runtime: a muted row keeps 0.72 opacity, not the old wash-out',
+        !!muted && muted.opacity === 0.72, JSON.stringify(muted && muted.opacity));
+    } catch (e) {
+      check('v0.9.23 runtime: Finding rendered at all', false, String(e));
+    }
+  }
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
