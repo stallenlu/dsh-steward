@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.20 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.20');
+  check('v0.9.21 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.21');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1937,6 +1937,25 @@ await (async () => {
   const pkg920 = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
   check('v0.9.20 package description leads with positioning', /^Health steward/.test(pkg920.description) && /plan/i.test(pkg920.description), pkg920.description.slice(0, 40));
   check('v0.9.20 README documents the header card and the rewrite', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.20（') >= 0);
+}
+
+// ---- v0.9.21: the sticky shell stops painting its own band ----
+{
+  const c921 = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  const hs921 = c921.indexOf('sticky 外壳');
+  const he921 = c921.indexOf('读取失败', hs921);
+  const shellSrc921 = hs921 >= 0 && he921 > hs921 ? c921.slice(hs921, he921) : '';
+  check('v0.9.21 header shell slice was located', shellSrc921.length > 200, 'len=' + shellSrc921.length);
+  check('v0.9.21 the shell no longer paints a band behind the card',
+    shellSrc921.length > 0 && !shellSrc921.includes('background: C.bg') && !shellSrc921.includes('background: C.fill'));
+  check('v0.9.21 the shell dropped its own inner padding',
+    shellSrc921.length > 0 && !shellSrc921.includes('paddingTop') && !shellSrc921.includes('paddingBottom'));
+  check('v0.9.21 spacing now comes from margin, not painted padding',
+    shellSrc921.includes('marginBottom: THEME.gap'));
+  check('v0.9.21 the header is still sticky',
+    shellSrc921.includes("position: 'sticky'") && shellSrc921.includes('top: 0') && shellSrc921.includes('zIndex'));
+  check('v0.9.21 README documents the shell background removal',
+    fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.21（') >= 0);
 }
 
 console.log('');
