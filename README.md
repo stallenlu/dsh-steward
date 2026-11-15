@@ -1,6 +1,25 @@
 # dsh-steward — 智能管家（体检 + 授权执行）插件
 
-**状态：v0.9.21（顶栏外壳不再涂底色）已发布 npm + GitHub，并已在本机重装生效 —— 源码树 / profile / 本机安装副本 / npm / GitHub `21133fc` 五方一致；浏览器需刷新页面（F5/Ctrl+R，不是重启）**
+**状态：v0.9.22（前两张卡通栏 + 配色向参照面板看齐）代码已落地，尚未发版 —— 本机当前仍跑 registry 0.9.21 tarball，须发版 + 重装 + 刷新页面后可见**
+
+## v0.9.22（前两张卡填满宽度，配色向 FreeLLMAPI 面板看齐）
+
+用户 (m16067) 给两张截图：「智能管家的前两个卡片没有充分利用空间，整体配色向第二张截图看齐」。第一张里顶栏卡与简报卡都只占左侧约四成、右侧一大片空；第二张是 FreeLLMAPI 面板，卡片通栏、tab 选中是灰底胶囊、主按钮是蓝色。
+
+配色这次不是看图猜——参照插件在本机就有源码（`dsh-freellmapi/lib/client.js`），逐字读到它的规则：容器**没有宽度上限**；卡片是 `border-radius:12px` + `1px solid var(--dsw-alias-border-l2)` + `background:var(--dsw-alias-bg-layer-1)`（页面层，不是浮起的 module-platform 层），只靠一条 hairline 分隔；选中 tab 是 `color-mix(label-secondary 14%)` 的灰底胶囊；主按钮是 `var(--dsw-alias-button-primary-fill, #3b82f6)`，并且它自己的注释写明**不能用 `brand-primary`**——深色主题下那个 alias 解析成近白，会变成白底白字（与我 v0.9.16 的白按钮 bug 同源）。
+
+四处改动（全在 `lib/client.js`，纯渲染层）：
+
+1. **两张卡取消 `maxWidth: 880`**。上一轮（v0.9.19）收窄是为了不让「去处理」飞到最右边，代价是卡片只占左侧四成。这次改成把三条「要紧事」排成 `grid: repeat(auto-fit, minmax(280px, 1fr))`——横向空间由内容自己填满，操作仍贴在各自那一行的右边，两头都不牺牲。
+2. **卡片底色 `THEME.card` → `THEME.surface` + hairline**，与参照一致。参照插件的卡片是 layer-1 而它的容器不是 layer-1，所以一条 hairline 就分得开；我的面板根同样不涂色、露出的是宿主容器，因此不会重演 v0.9.21「卡片后面有块框」。
+3. **tab 选中态：绿色下划线 → 中性灰底胶囊**（`mix(C.sub, 14)`、`borderRadius: 14`、`height: 28`）。绿色是 baseline 的「稳定」数据色，用它标选中会把数据语义借走——用户看到绿线会以为「这一页健康」，而它只是想说「你在这页」。
+4. **主按钮：反相块 → `THEME.primaryFill` + `THEME.primaryFg`**，次按钮改胶囊 + `inset 0 0 0 1px` 描边。反相块在深色下就是 `--dsw-alias-label-primary`（近白），所以「重新体检」一直是一块白板；换成宿主的动作色后，深色浅色都是可点击的蓝。白底白字那条护栏保留：前景仍强制取 fill 自己的 fg，调用方的 `tone` 顶不掉它。
+
+与 baseline 规则的关系：`dsh-design-baseline` 说「选中用反相、彩色只留给数据」。tab 选中改成**中性灰底**（不是彩色，合规）；按钮用的是宿主语义 token `button-primary-fill`，属动作面而非六数据色，参照插件也是这么做的——所以这次是向同一条基准的另一种合法实现看齐，不是破例。
+
+验证：新增 10 条静态断言（两张卡无 880 上限 / 底色走 surface / 要紧事走 auto-fit 网格 / 主按钮取 primaryFill / 次按钮 inset 描边 / 不许回落到 brand-primary / tab 无下划线且用中性 wash / README 记录），并**改写**了 6 条被本次刻意推翻的旧断言（v0.9.19 的宽度上限与 card 面、v0.9.20 的宽度上限与 card 面、运行期两条对应项、白按钮前景断言改成新 token）——旧断言原样留着会变成「测试绿但产品已改」的假绿。反向验证：`lib/client.js` + `package.json` 退回 0.9.21 后新断言须转红。
+
+**不碰任何授权面**：无新增 action、无新增检测项、服务端与语料层零改动。
 
 ## v0.9.21（卡片后面那块框：把外壳的底色去掉）
 
@@ -490,7 +509,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），448 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
+- `smoke.mjs`：本地验证（不启动宿主），458 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```

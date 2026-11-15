@@ -1544,17 +1544,17 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.21 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.21');
+  check('v0.9.22 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.22');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
 {
-  // ---- 白色按钮回归：primary 按钮必须反相，绝不能被调用方的 tone 顶掉 ----
-  // C.text 与 C.solid 都映射到 --dsw-alias-label-primary，深色主题下解析成白色；
-  // 一旦 color 用了 tone，primary 就变成白底白字 = 看不见字的纯白矩形。
+  // ---- 白色按钮回归：primary 的前景必须由 fill 自己的 fg 顶着，不能被调用方 tone 顶掉 ----
+  // v0.9.22 起 primary 的底色是 --dsw-alias-button-primary-fill（宿主动作色），
+  // 但同一类 hazard 没变：一旦 color 用了 tone，深色下仍可能白底白字。
   const wbClient = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
-  check('Btn forces the inverted foreground for primary buttons',
-    wbClient.indexOf('color: props.primary && !props.disabled ? C.on : (props.tone || C.text)') >= 0);
+  check('Btn forces the action-fill foreground for primary buttons',
+    wbClient.indexOf('color: props.primary && !props.disabled ? THEME.primaryFg : (props.tone || C.text)') >= 0);
   check('the old tone-wins colour expression is gone',
     wbClient.indexOf('color: props.tone || (props.primary') < 0);
   check('no primary button call site passes a tone',
@@ -1859,12 +1859,12 @@ await (async () => {
     const bEnd = bStart < 0 ? -1 : v919Client.indexOf('\n    }\n', bStart);
     const briefingSrc = bEnd < 0 ? '' : v919Client.slice(bStart, bEnd + 6);
 
-    check('v0.9.19: the briefing card paints on the baseline card surface', /background:\s*THEME\.card/.test(briefingSrc));
+    check('v0.9.19: the briefing card paints on a token surface, not a literal', /background:\s*THEME\.(card|surface)/.test(briefingSrc));
     check('v0.9.19: the briefing card no longer uses the hover colour as its background', !/background:\s*C\.fill/.test(briefingSrc));
     check('v0.9.19: the briefing card radius comes from the baseline token, not a bare number', /borderRadius:\s*THEME\.radius\b/.test(briefingSrc) && !/borderRadius:\s*10\b/.test(briefingSrc));
     check('v0.9.19: the briefing card padding matches .dsb-card (16)', /padding:\s*16\b/.test(briefingSrc) && !/padding:\s*'11px 13px'/.test(briefingSrc));
     check('v0.9.19: the avatar-to-text gap is the baseline gap token', /gap:\s*THEME\.gap\b/.test(briefingSrc));
-    check('v0.9.19: the card is width-capped so actions are not flung to the far edge', /maxWidth:\s*880\b/.test(briefingSrc));
+    check('v0.9.22: the briefing card fills the panel instead of capping at 880', !/maxWidth:\s*880\b/.test(briefingSrc));
     check('v0.9.19: the 去处理 chip radius is a token, not a bare 5', /borderRadius:\s*THEME\.radiusSm\b/.test(briefingSrc) && !/borderRadius:\s*5\b/.test(briefingSrc));
     check('v0.9.19: task titles read as primary text, not muted', /color:\s*C\.text,\s*overflow:\s*'hidden'/.test(briefingSrc));
     check('v0.9.19 README documents the layout fix', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.19（') >= 0);
@@ -1910,9 +1910,9 @@ await (async () => {
         taskTitle: find((n) => n.props && n.props.style && n.props.style.textOverflow === 'ellipsis'),
       };
       check('v0.9.19 runtime: the rendered card really carries the baseline radius', rt.radius === THEME9.radius, JSON.stringify(rt.radius));
-      check('v0.9.19 runtime: the rendered card really carries the card surface', rt.background === THEME9.card, JSON.stringify(rt.background));
+      check('v0.9.19 runtime: the rendered card really carries the panel surface', rt.background === THEME9.surface, JSON.stringify(rt.background));
       check('v0.9.19 runtime: the rendered card really carries 16px padding', rt.padding === 16, JSON.stringify(rt.padding));
-      check('v0.9.19 runtime: the rendered card is capped at 880 wide', rt.maxWidth === 880, JSON.stringify(rt.maxWidth));
+      check('v0.9.22 runtime: the rendered card carries no width cap', rt.maxWidth === undefined, JSON.stringify(rt.maxWidth));
       check('v0.9.19 runtime: the 去处理 chip uses the small radius token', !!rt.chip && rt.chip.props.style.borderRadius === THEME9.radiusSm, JSON.stringify(rt.chip && rt.chip.props.style.borderRadius));
       check('v0.9.19 runtime: a task title renders in primary text colour', !!rt.taskTitle && rt.taskTitle.props.style.color === C9.text, JSON.stringify(rt.taskTitle && rt.taskTitle.props.style.color));
     } catch (e) {
@@ -1926,8 +1926,8 @@ await (async () => {
   const hEnd920 = c920.indexOf('读取失败', hStart920);
   const headerSrc920 = hStart920 >= 0 && hEnd920 > hStart920 ? c920.slice(hStart920, hEnd920) : '';
   check('v0.9.20 header slice was located', headerSrc920.length > 200, 'len=' + headerSrc920.length);
-  check('v0.9.20 header is a baseline card on the sticky shell', headerSrc920.includes('background: THEME.card') && headerSrc920.includes('borderRadius: THEME.radius') && headerSrc920.includes('padding: 16'));
-  check('v0.9.20 header card shares the briefing width cap', headerSrc920.includes('maxWidth: 880'));
+  check('v0.9.20 header is a baseline card on the sticky shell', headerSrc920.includes('background: THEME.surface') && headerSrc920.includes('borderRadius: THEME.radius') && headerSrc920.includes('padding: 16'));
+  check('v0.9.22 header card fills the panel like the briefing card', !headerSrc920.includes('maxWidth: 880'));
   check('v0.9.20 header is no longer a bare border strip', headerSrc920.length > 0 && !headerSrc920.includes('borderBottom:'));
   const zh920 = JSON.parse(fs.readFileSync(path.join(here, 'locale', 'zh.json'), 'utf8'));
   check('v0.9.20 zh description is a short positioning line', zh920.meta.description.length <= 64 && /管家/.test(zh920.meta.description) && /计划/.test(zh920.meta.description), 'len=' + zh920.meta.description.length);
@@ -1957,6 +1957,35 @@ await (async () => {
   check('v0.9.21 README documents the shell background removal',
     fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.21（') >= 0);
 }
+
+  // —— v0.9.22：前两张卡通栏 + 配色向 FreeLLMAPI 面板看齐（m16067）——
+  {
+    const c922 = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+    const b922Start = c922.indexOf('function Briefing(props) {');
+    const b922End = b922Start < 0 ? -1 : c922.indexOf('\n    }\n', b922Start);
+    const brief922 = b922End < 0 ? '' : c922.slice(b922Start, b922End + 6);
+
+    check('v0.9.22: the briefing card no longer caps its width at 880', brief922.length > 200 && !/maxWidth:\s*880\b/.test(brief922));
+    check('v0.9.22: the briefing card paints on the panel surface like the reference card', /background:\s*THEME\.surface/.test(brief922) && !/background:\s*THEME\.card/.test(brief922));
+    check('v0.9.22: the three 要紧事 rows fill the width as an auto-fit grid', /display:\s*'grid'/.test(brief922) && /gridTemplateColumns:\s*'repeat\(auto-fit, minmax\(280px, 1fr\)\)'/.test(brief922));
+
+    const h922Start = c922.indexOf('sticky 外壳');
+    const h922End = c922.indexOf('读取失败', h922Start);
+    const head922 = h922Start >= 0 && h922End > h922Start ? c922.slice(h922Start, h922End) : '';
+    check('v0.9.22: the header card no longer caps its width either', head922.length > 200 && !head922.includes('maxWidth: 880'));
+    check('v0.9.22: the header card uses the same surface as the briefing card', head922.includes('background: THEME.surface') && !head922.includes('background: THEME.card'));
+
+    check('v0.9.22: a primary button takes the host action fill, not an inverted block',
+      c922.includes("background: props.primary && !props.disabled ? THEME.primaryFill : 'transparent'"));
+    check('v0.9.22: a secondary button is a hairline pill, not a filled hover block',
+      c922.includes("boxShadow: props.primary && !props.disabled ? 'none' : 'inset 0 0 0 1px ' + C.line"));
+    check('v0.9.22: the primary action never falls back to the near-white brand alias',
+      !c922.includes('brand-primary') && c922.includes('THEME.primaryFill'));
+    check('v0.9.22: the selected tab is a neutral wash, not a coloured underline',
+      c922.includes("background: tab === key ? mix(C.sub, 14) : 'transparent'") && !c922.includes("borderBottom: tab === key"));
+
+    check('v0.9.22 README documents the width and palette change', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.22（') >= 0);
+  }
 
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
