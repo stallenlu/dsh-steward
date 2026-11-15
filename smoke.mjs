@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.18 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.18');
+  check('v0.9.19 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.19');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1852,6 +1852,73 @@ await (async () => {
     }
   }
 
+  // —— v0.9.19：第一张卡片（Briefing）的版式（静态 + 运行期）——
+  {
+    const v919Client = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+    const bStart = v919Client.indexOf('function Briefing(props) {');
+    const bEnd = bStart < 0 ? -1 : v919Client.indexOf('\n    }\n', bStart);
+    const briefingSrc = bEnd < 0 ? '' : v919Client.slice(bStart, bEnd + 6);
+
+    check('v0.9.19: the briefing card paints on the baseline card surface', /background:\s*THEME\.card/.test(briefingSrc));
+    check('v0.9.19: the briefing card no longer uses the hover colour as its background', !/background:\s*C\.fill/.test(briefingSrc));
+    check('v0.9.19: the briefing card radius comes from the baseline token, not a bare number', /borderRadius:\s*THEME\.radius\b/.test(briefingSrc) && !/borderRadius:\s*10\b/.test(briefingSrc));
+    check('v0.9.19: the briefing card padding matches .dsb-card (16)', /padding:\s*16\b/.test(briefingSrc) && !/padding:\s*'11px 13px'/.test(briefingSrc));
+    check('v0.9.19: the avatar-to-text gap is the baseline gap token', /gap:\s*THEME\.gap\b/.test(briefingSrc));
+    check('v0.9.19: the card is width-capped so actions are not flung to the far edge', /maxWidth:\s*880\b/.test(briefingSrc));
+    check('v0.9.19: the 去处理 chip radius is a token, not a bare 5', /borderRadius:\s*THEME\.radiusSm\b/.test(briefingSrc) && !/borderRadius:\s*5\b/.test(briefingSrc));
+    check('v0.9.19: task titles read as primary text, not muted', /color:\s*C\.text,\s*overflow:\s*'hidden'/.test(briefingSrc));
+    check('v0.9.19 README documents the layout fix', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.19（') >= 0);
+
+    // 运行期：真把 Briefing 渲染一遍，检查落到 style 对象上的值，而不是只看源码文本。
+    let rt = null;
+    try {
+      const NL9 = String.fromCharCode(10);
+      const THEME9 = { radius: '12px', radiusSm: '8px', radiusPill: '9999px', gap: '12px', card: 'CARD', surface: 'SURF', hover: 'HOVER', line: 'LINE', lineStrong: 'LINE2', text: 'TXT', textSecondary: 'SUB', textTertiary: 'FAINT', accentError: 'E', accentWarn: 'W', accentInfo: 'I', accentStability: 'S' };
+      const C9 = { text: 'TXT', sub: 'SUB', faint: 'FAINT', line: 'LINE2', fill: 'HOVER', bg: 'SURF', critical: 'E', warning: 'W', info: 'I', ok: 'S' };
+      const SEV9 = { critical: { color: 'E', label: '严重' }, warning: { color: 'W', label: '留意' }, info: { color: 'I', label: '提示' } };
+      function h9(tag, props) {
+        return { tag: typeof tag === 'function' ? 'Avatar' : tag, props: props || {}, kids: Array.prototype.slice.call(arguments, 2) };
+      }
+      const Briefing9 = new Function('h', 'Avatar', 'greetingWord', 'agoText', 'SEV', 'ACTION_FOR', 'C', 'THEME',
+        briefingSrc + NL9 + 'return Briefing;')(
+        h9, function Avatar() { return { tag: 'Avatar', props: {}, kids: [] }; },
+        () => '晚上好', () => '刚刚', SEV9, { 'data-at-risk': 'backup' }, C9, THEME9);
+      const report9 = {
+        generatedAt: '2026-11-15T13:00:00.000Z',
+        summary: { level: 'warning', counts: { critical: 0, warning: 2, info: 10, muted: 1 } },
+        findings: [
+          { id: 'data-at-risk', severity: 'warning', score: 63, title: '易失数据不在默认备份分区内' },
+          { id: 'plugin-change', severity: 'warning', score: 53, title: '本会话记录到 1 次插件变更' },
+          { id: 'patch-backup', severity: 'info', score: 35, title: '留有 1 个启动期 patch 备份（当前配置未被换掉）' },
+        ],
+      };
+      const tree = Briefing9({ report: report9, loading: false, onGo: () => {} });
+      const flat = (n, out) => {
+        if (Array.isArray(n)) { n.forEach((k) => flat(k, out)); return out; }
+        if (!n || typeof n !== 'object') return out;
+        out.push(n); (n.kids || []).forEach((k) => flat(k, out)); return out;
+      };
+      const all = flat(tree, []);
+      const find = (pred) => all.filter(pred)[0] || null;
+      rt = {
+        radius: tree && tree.props && tree.props.style && tree.props.style.borderRadius,
+        background: tree && tree.props && tree.props.style && tree.props.style.background,
+        padding: tree && tree.props && tree.props.style && tree.props.style.padding,
+        maxWidth: tree && tree.props && tree.props.style && tree.props.style.maxWidth,
+        gap: tree && tree.props && tree.props.style && tree.props.style.gap,
+        chip: find((n) => n.tag === 'button' && (n.kids || []).join('') === '去处理'),
+        taskTitle: find((n) => n.props && n.props.style && n.props.style.textOverflow === 'ellipsis'),
+      };
+      check('v0.9.19 runtime: the rendered card really carries the baseline radius', rt.radius === THEME9.radius, JSON.stringify(rt.radius));
+      check('v0.9.19 runtime: the rendered card really carries the card surface', rt.background === THEME9.card, JSON.stringify(rt.background));
+      check('v0.9.19 runtime: the rendered card really carries 16px padding', rt.padding === 16, JSON.stringify(rt.padding));
+      check('v0.9.19 runtime: the rendered card is capped at 880 wide', rt.maxWidth === 880, JSON.stringify(rt.maxWidth));
+      check('v0.9.19 runtime: the 去处理 chip uses the small radius token', !!rt.chip && rt.chip.props.style.borderRadius === THEME9.radiusSm, JSON.stringify(rt.chip && rt.chip.props.style.borderRadius));
+      check('v0.9.19 runtime: a task title renders in primary text colour', !!rt.taskTitle && rt.taskTitle.props.style.color === C9.text, JSON.stringify(rt.taskTitle && rt.taskTitle.props.style.color));
+    } catch (e) {
+      check('v0.9.19 runtime: the briefing renders at all', false, String(e));
+    }
+  }
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

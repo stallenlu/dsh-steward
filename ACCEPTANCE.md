@@ -97,6 +97,10 @@
 > 用户 m14954 报：面板条目默认折叠、点条目展开都对，但「提示」组 10 条点一条会 10 条全展开，且再点收不回来（无闭环）。根因：开合状态按**组名**记在 `expandedGroups` 布尔里，折叠行 `onToggle` 只写 `true` 从不写回 `false`，展开卡标题行没有点击/收起入口；「严重」组还被硬编码默认展开。改法（仅渲染层、不碰授权面）：状态改成按条目 `itemKey(f,i)` 记 `openItems`、`toggleItem` 用 `[key]: !m[key]` 双向翻转——点一条只开一条、再点标题收起；`Finding` 判据由 `props.compact` 换成 `props.expanded`；组标题只给显式批量「全部展开 ⌄ / 全部收起 ⌃」；删死代码 `COLLAPSE_PREVIEW` / `canToggle`，所有组一律默认折叠。补 11 静态 + 6 运行期 harness 断言（把真实 `itemKey`/`toggleItem`/`setGroupOpen` 抠出来配可变 state 跑一遍「点一次只开 1 条 → 再点归零 → 各条独立 → 显式批量才开满 10」），关键判据反向验证过会红。**v0.9.18 已 npm publish + git push，本机已从 registry tarball 重装并 set_bundle 热挂载，宿主侧 list_bundles 已确认 source 为 @sidady/dsh-steward@0.9.18；浏览器端 client bundle 须刷新页面（Ctrl+R，非重启）才重新执行**；下方基线快照表仍是 2026-11-12 的 0.9.16 固定对照点，不改写。
 >
 
+> **2026-11-15 十一次修订（v0.9.19 第一张卡片版式修复，代码落地、待发版）：本地断言基线 418 → 433，新增 A28 一行。**
+>
+> 用户 (m15390) 用一张截图指出第一张卡片「非圆角、智能管家贴近卡片左边」。两条都成立且可量化：`borderRadius: 10` 铺在宽屏实测 2200+ px 的通栏上，圆角占不到 0.5% 宽度；底色用 `C.fill`，那是 hover 态色（深色下 `rgba(255,255,255,.08)`），叠在页面底 `rgb(35,35,36)` 上边界都看不出来，边界看不出圆角就更看不出；`padding: 11px 13px` 比 baseline 的 `.dsb-card`（16）紧 3 px。修法是把几何全部换成 `dsh-design-baseline` 标记块里的 token（`THEME.radius` / `THEME.gap` / `THEME.radiusSm`）、底色换 `THEME.card`、`padding: 16`、卡片 `maxWidth: 880`、任务行字号与颜色提到主信息层级。**不碰任何授权面，纯渲染层。** 新增 15 条断言（9 静态 + 6 运行期）：运行期那 6 条把 `Briefing` 源码用 `new Function` 注入假 `h`/`Avatar`/`SEV`/`ACTION_FOR`/`C`/`THEME` **真渲染一遍**，遍历节点树断言落到 style 对象上的实际值，不是查字符串。反向验证：`lib/client.js` 退回 0.9.18 后 9 条静态全红。
+
 ## 基线快照（2026-11-12 22:33 采集（v0.9.16 重采），回看时用来对照）
 
 | 项 | 基线值 |
@@ -105,7 +109,7 @@
 | npm 上的版本 | **`0.9.16`**（`dist-tags.latest`，2026-11-14 用户 m14210「要发」授权发布）——与本地、ping 三者一致；发布后从 registry 反装解包核对 17 文件 / `lib/` 8 个 JS / 8 个相对 import 全命中、在 tarball 里跑 `node smoke.mjs` **379 passed / 0 failed** |
 | GitHub | `stallenlu/dsh-steward` public，远端 `main` 已推到 `2d25b2e`（v0.9.16 全系列 6 个 commit，2026-11-14 push）；npm 0.9.16 同步 publish；`git status` 干净 |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **418 passed / 0 failed**（v0.9.18；见第十次修订）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401** → v0.9.18 面板单条展开/收起闭环 **+17 → 418**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **433 passed / 0 failed**（v0.9.19；见第十一次修订）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401** → v0.9.18 面板单条展开/收起闭环 **+17 → 418** → v0.9.19 第一张卡片版式（含 6 条真渲染运行期判据）**+15 → 433**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
 | `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
 | **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
@@ -181,6 +185,7 @@
 | A25 | 右侧栏「智能管家」tab 的正文有没有在设置切换后仍挂得住 | 右侧栏 tab 正文 + settings `ui.entry` + ToastHost + `smoke.mjs` 运行期 harness | 五件都满足才 ✅：①`ui.entry=right` 时初次挂 both、异步读到设置再挂 right，**正文槽位不许被二次重挂 dispose**——点开 tab 显示面板本体而不是宿主兜底「这类内容还没有可用的查看方式。」；②正文槽位 `sidebar.right.pane.tab`（key=PANEL_ID）在 apply() 顶层独立注册，不嵌在 `sidebarRightTabs` 的 inject 回调里；③右侧整套用 `rightMounted` 幂等门，wantRight 不变就不拆不挂；④ToastHost 用独立 `ctx.effect` 常驻、不进任何拆装列表（新版提醒会真正弹出）；⑤`ui.entry` 三值（both/left/right）语义不变，right 时左侧入口与 main 全拆。运行期 harness 断言「正文恰好注册 1 次且两次重挂后仍存活、ToastHost 仍存活、right 时 leftLive=0」。若切到 right 后面板变空、或静态判据全绿但运行期正文已丢 → ❌ |
 | A26 | **v0.9.17 三处自查 Bug 有没有真被修掉、且没引入回归**（m14481 授权） | `duty.jsonl` 体积/行数 + `duty` 返回体 `logTotal`/`lastError` + `analyzeUpgrades` 风险档 + `smoke.mjs` 运行期 harness | 五件都满足才 ✅：①`duty.jsonl` 行数随时间收敛到 `DUTY_DISK_CAP=2000`（不再单调无限涨），`ping`/`report`/`audit` 返回体只带最近 5 条 `log` 且有 `logTotal` 报真实班数（不是把「只回 5 条」冒充「一共 5 班」）；②宿主版本未确定且包带 `engines.dsh` 时 `analyzeUpgrades` 至少 medium、理由含「先确认宿主版本」，无门槛的普通小步更新仍 low（不许把全部都抬成 medium）；③`resolvedHostVersion` 与 compat-check 共用三源（显式传入 / crash `meta.app` / `@deepseek-ai/dsh-base`），口径一致；④当班抛错时台账落 `state:'error'`/`executed:0`/中文 `seen`、`duty` 暴露 `lastError`、overview 状态行转红字且 `dutyRunning` 复位；⑤运行期 harness 的健康路径仍返回 `state:'observe-only'` briefing。任一不满足，或撤掉修法后关键判据不红 → ❌ |
 | A27 | **面板单条展开/收起有没有闭环、且不再一开全开**（m14954） | `lib/client.js` 开合状态 + `smoke.mjs` 运行期 harness + 面板肉眼 | 五件都满足才 ✅：①所有组（含「严重」）默认每条折叠；②点某一条只展开那一条（不是整组 10 条全开）；③再点该条标题能收起；④各条开合互不影响；⑤组标题的「全部展开 ⌄ / 全部收起 ⌃」是显式批量，不偷偷扩散单击。运行期 harness 判据「点一次 openCount=1、再点 =0、两条独立、批量才 =10」撤掉修法后须转红。任一不满足 → ❌ |
+| A28 | **第一张卡片是不是按 baseline 排的**（m15390） | `lib/client.js` 的 `Briefing` + `smoke.mjs` 运行期真渲染 | 六件都满足才 ✅：①圆角/间距取 `THEME.radius`/`THEME.gap`/`THEME.radiusSm`，不写裸数字；②底色是 `THEME.card` 而不是 hover 态色；③`padding` 对齐 `.dsb-card` 的 16；④卡片宽度有上限（宽屏不把操作推到最右端）；⑤「要紧事」行是主信息层级（`C.text`），不比问候语更淡；⑥运行期那 6 条查的是渲染出来的 style 对象而不是源码字符串。把 `lib/client.js` 退回 0.9.18 后 9 条静态须全红 → 否则 ❌ |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -203,7 +208,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前基线 418 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前基线 433 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
