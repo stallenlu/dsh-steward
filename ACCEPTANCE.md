@@ -101,6 +101,10 @@
 >
 > 用户 (m15390) 用一张截图指出第一张卡片「非圆角、智能管家贴近卡片左边」。两条都成立且可量化：`borderRadius: 10` 铺在宽屏实测 2200+ px 的通栏上，圆角占不到 0.5% 宽度；底色用 `C.fill`，那是 hover 态色（深色下 `rgba(255,255,255,.08)`），叠在页面底 `rgb(35,35,36)` 上边界都看不出来，边界看不出圆角就更看不出；`padding: 11px 13px` 比 baseline 的 `.dsb-card`（16）紧 3 px。修法是把几何全部换成 `dsh-design-baseline` 标记块里的 token（`THEME.radius` / `THEME.gap` / `THEME.radiusSm`）、底色换 `THEME.card`、`padding: 16`、卡片 `maxWidth: 880`、任务行字号与颜色提到主信息层级。**不碰任何授权面，纯渲染层。** 新增 15 条断言（9 静态 + 6 运行期）：运行期那 6 条把 `Briefing` 源码用 `new Function` 注入假 `h`/`Avatar`/`SEV`/`ACTION_FOR`/`C`/`THEME` **真渲染一遍**，遍历节点树断言落到 style 对象上的实际值，不是查字符串。反向验证：`lib/client.js` 退回 0.9.18 后 14 条转红（8 静态 + 6 运行期），其余 0 条 —— 第 9 条静态是 README 文档断言，反向验证刻意保留新 README 所以保持绿（设计，非漏网）。**同日已发版并本机重装生效**（用户 m15616「没重启，我看还是没有变化哈」——上一轮把 v0.9.19 只留在源码树、停在「要发版吗」，用户看到的仍是 0.9.18 旧版式，这是同一交付缺口第二次重演，本轮起版式/交互类修复一律走完整链再交付）：npm `@sidady/dsh-steward@0.9.19` publish（integrity `sha512-xvgkFx1I7YSbWx7d12x5A+OIPLG3TpCfDSgNUK1afOj9b5268xD8/dtssCQlgz+qWvXRNItWQ7hKS88z6fOyFw==` 与本地 tarball 一致，registry 传播第 5 次轮询约 100s 到位）、GitHub `6db8a98..23995ca` push；profile dep 0.9.18→0.9.19 + bundled pnpm 11.28.5 `--lockfile-only`（`.modules.yaml` sha1 不变、node_modules 未碰）→ `--frozen-lockfile --ignore-scripts`（859 条目 `- 0.9.18 / + 0.9.19`）；安装副本 17 文件与 tarball **BYTE_IDENTICAL**、`THEME.card`/`maxWidth: 880` 各命中、裸名目录不存在；`set_bundle` false→true（两次 applied）后 ping `0.9.19` / `wiring.route:"registered"` / duty `logTotal:60, lastError:null`；report 13 findings / `counts={critical:0,warning:2,info:11,muted:0}` / `errors=[]` / coverage 7/7；web-boot 崩溃日志仍 4 份；`list_bundles` `source:"@sidady/dsh-steward@0.9.19"`（决定性形态证据）。本机无 dev:web 监视进程，**浏览器端必须刷新页面（F5/Ctrl+R，不是重启）才重新执行新 client bundle**；下方基线快照表仍是 2026-11-12 的 0.9.16 固定对照点，不改写。
 
+> **2026-11-15 十二次修订（v0.9.20 顶栏成卡 + 功能介绍重写）：本地断言基线 433 → 442，新增 A29 一行。**
+>
+> 用户 (m15770) 拿两张截图对比：顶栏 KPI 头是「只有下边框的裸文字带」——「智能管家」四个字贴面板左边、「重新体检」按钮贴上边，问「为什么不能是（简报）类似的布局」。修法：sticky 外壳保留（滚动不丢），里面装一张与简报同规格的 baseline 卡片（`THEME.radius` / `THEME.card` / `padding: 16` / `maxWidth: 880`），删掉 `borderBottom` 裸线，tab 行 `marginTop` 6→10。用户 (m15786) 同时指出宿主插件详情页的功能介绍「不够简单明了的说明产品定位和用途」——旧文案逐项罗列八项体检像 changelog；改成一句定位 + 一句边界：「你的 DSH 健康管家：定期替你把配置、备份、崩溃、更新都体检一遍，出问题先给你看计划，确认了才动手。」，`locale/zh.json`、`locale/en.json`、`package.json` 三处同步。**不碰任何授权面，纯渲染层 + 文案。** 新增 9 条静态断言（顶栏卡片三判据 / 宽度上限 / 无裸线 / zh ≤64 字含「管家」「计划」且非旧长串 / en steward+plan / package 以 `Health steward` 开头含 plan / README 记录 / 切片定位）。反向验证：`lib/client.js` + `locale/*` + `package.json` 退回 0.9.19 后新断言须转红。
+
 ## 基线快照（2026-11-12 22:33 采集（v0.9.16 重采），回看时用来对照）
 
 | 项 | 基线值 |
@@ -109,7 +113,7 @@
 | npm 上的版本 | **`0.9.16`**（`dist-tags.latest`，2026-11-14 用户 m14210「要发」授权发布）——与本地、ping 三者一致；发布后从 registry 反装解包核对 17 文件 / `lib/` 8 个 JS / 8 个相对 import 全命中、在 tarball 里跑 `node smoke.mjs` **379 passed / 0 failed** |
 | GitHub | `stallenlu/dsh-steward` public，远端 `main` 已推到 `2d25b2e`（v0.9.16 全系列 6 个 commit，2026-11-14 push）；npm 0.9.16 同步 publish；`git status` 干净 |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **433 passed / 0 failed**（v0.9.19；见第十一次修订）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401** → v0.9.18 面板单条展开/收起闭环 **+17 → 418** → v0.9.19 第一张卡片版式（含 6 条真渲染运行期判据）**+15 → 433**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **433 passed / 0 failed**（v0.9.20；见第十二次修订）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401** → v0.9.18 面板单条展开/收起闭环 **+17 → 418** → v0.9.19 第一张卡片版式（含 6 条真渲染运行期判据）**+15 → 433** → v0.9.20 顶栏成卡 + 功能介绍重写 **+9 → 442**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
 | `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
 | **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
@@ -186,6 +190,7 @@
 | A26 | **v0.9.17 三处自查 Bug 有没有真被修掉、且没引入回归**（m14481 授权） | `duty.jsonl` 体积/行数 + `duty` 返回体 `logTotal`/`lastError` + `analyzeUpgrades` 风险档 + `smoke.mjs` 运行期 harness | 五件都满足才 ✅：①`duty.jsonl` 行数随时间收敛到 `DUTY_DISK_CAP=2000`（不再单调无限涨），`ping`/`report`/`audit` 返回体只带最近 5 条 `log` 且有 `logTotal` 报真实班数（不是把「只回 5 条」冒充「一共 5 班」）；②宿主版本未确定且包带 `engines.dsh` 时 `analyzeUpgrades` 至少 medium、理由含「先确认宿主版本」，无门槛的普通小步更新仍 low（不许把全部都抬成 medium）；③`resolvedHostVersion` 与 compat-check 共用三源（显式传入 / crash `meta.app` / `@deepseek-ai/dsh-base`），口径一致；④当班抛错时台账落 `state:'error'`/`executed:0`/中文 `seen`、`duty` 暴露 `lastError`、overview 状态行转红字且 `dutyRunning` 复位；⑤运行期 harness 的健康路径仍返回 `state:'observe-only'` briefing。任一不满足，或撤掉修法后关键判据不红 → ❌ |
 | A27 | **面板单条展开/收起有没有闭环、且不再一开全开**（m14954） | `lib/client.js` 开合状态 + `smoke.mjs` 运行期 harness + 面板肉眼 | 五件都满足才 ✅：①所有组（含「严重」）默认每条折叠；②点某一条只展开那一条（不是整组 10 条全开）；③再点该条标题能收起；④各条开合互不影响；⑤组标题的「全部展开 ⌄ / 全部收起 ⌃」是显式批量，不偷偷扩散单击。运行期 harness 判据「点一次 openCount=1、再点 =0、两条独立、批量才 =10」撤掉修法后须转红。任一不满足 → ❌ |
 | A28 | **第一张卡片是不是按 baseline 排的**（m15390） | `lib/client.js` 的 `Briefing` + `smoke.mjs` 运行期真渲染 | 六件都满足才 ✅：①圆角/间距取 `THEME.radius`/`THEME.gap`/`THEME.radiusSm`，不写裸数字；②底色是 `THEME.card` 而不是 hover 态色；③`padding` 对齐 `.dsb-card` 的 16；④卡片宽度有上限（宽屏不把操作推到最右端）；⑤「要紧事」行是主信息层级（`C.text`），不比问候语更淡；⑥运行期那 6 条查的是渲染出来的 style 对象而不是源码字符串。把 `lib/client.js` 退回 0.9.18 后 9 条静态须全红 → 否则 ❌ |
+| A29 | **顶栏是不是成了卡片、介绍是不是成了人话**（m15770 + m15786） | `lib/client.js` 头部 + `locale/{zh,en}.json` + `package.json` description | 五件都满足才 ✅：①sticky 外壳里是 baseline 卡片（`THEME.card`/`THEME.radius`/`padding: 16`），不再有 `borderBottom` 裸线；②顶栏与简报同宽上限（`maxWidth: 880`），标题按钮不再贴面板边缘；③zh 介绍 ≤64 字、含「管家」「计划」、不再是逐项罗列的旧长串；④en 与 package description 同口径（steward/plan、`Health steward` 开头）；⑤把 `lib/client.js`+`locale/*`+`package.json` 退回 0.9.19 后这 9 条断言转红。任一不满足 → ❌ |
 
 ### B. 可回溯（每次动作都能查账）
 
@@ -208,7 +213,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前基线 433 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前基线 442 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |

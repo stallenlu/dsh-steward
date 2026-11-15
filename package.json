@@ -1,8 +1,8 @@
 {
   "name": "@sidady/dsh-steward",
-  "version": "0.9.19",
+  "version": "0.9.20",
   "type": "module",
-  "description": "Guardian for DeepSeek Harness: a read-only health check (boot crashes, backup freshness, config drift, workspace growth, plugin updates, host-version compat, model availability) plus an explicitly authorized action layer (plan → single-use fingerprint → confirm → audit) covering cache cleaning, encrypted volatile-data backups, plugin enable/disable, knowledge capture, finding mute, and switching the default model.",
+  "description": "Health steward for DeepSeek Harness: it checks config, backups, crashes, updates and models, and shows a plan before any authorized action.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",

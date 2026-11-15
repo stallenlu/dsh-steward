@@ -1,6 +1,20 @@
 # dsh-steward — 智能管家（体检 + 授权执行）插件
 
-**状态：v0.9.19（第一张卡片版式修复）已发布 npm + GitHub，并已在本机重装生效 —— 源码树 / profile / 本机安装副本 / npm / GitHub `23995ca` 五方一致；浏览器需刷新页面（F5/Ctrl+R，不是重启）才重新执行新 client bundle**
+**状态：v0.9.20（顶栏成卡 + 功能介绍重写）代码已落地，尚未发版 —— 本机当前仍跑 registry 0.9.19 tarball，须发版 + 重装 + 刷新页面后可见**
+
+## v0.9.20（顶栏成卡、介绍成人话）
+
+用户 (m15770) 拿两张截图对比：「截图1中的智能管家四个字基本上完全靠矩形框的左边没有空隙，重新体检按钮上沿也紧紧贴着矩形框上沿，这样的设计非常不好」。截图1 是顶部 KPI 头——它不是一张卡片，是一条只有下边框的裸文字带：标题贴着面板左边、按钮贴着面板上边。截图2 是 v0.9.19 改好的简报卡片，用户问「为什么不能是截图2 类似的布局」。
+
+修法（`lib/client.js` 的 Panel 头部，纯渲染层）：sticky 外壳保留——滚动时级别、计数、体检按钮不丢，且用页面底色盖住下面滚上来的内容；内容装进与简报同规格的 baseline 卡片（`borderRadius: THEME.radius`、`background: THEME.card`、`padding: 16`、`maxWidth: 880`），删掉那条 `borderBottom` 裸线，tab 行 `marginTop` 6→10。
+
+用户 (m15786) 同时指出功能介绍「不够简单明了的说明产品定位和用途」——原来那句把八项体检逐项罗列，读起来像 changelog 不像介绍。改成一句定位 + 一句边界：
+
+> 你的 DSH 健康管家：定期替你把配置、备份、崩溃、更新都体检一遍，出问题先给你看计划，确认了才动手。
+
+`locale/zh.json`（宿主插件详情页读的就是这里）、`locale/en.json`、`package.json` 的 description 三处同步改口径。
+
+验证：新增 9 条静态断言——header 卡片三判据（`THEME.card`/`THEME.radius`/`padding: 16`）、宽度上限 `maxWidth: 880`、不再出现 `borderBottom` 裸线、zh description ≤64 字且含「管家」「计划」、zh 不再是旧长串、en 含 steward/plan、package description 以 `Health steward` 开头且含 plan、README 记录本段、切片锚点定位成功。把 `lib/client.js` 退回 0.9.19 后 header 判据全部转红。
 
 ## v0.9.19（第一张卡片：把「说得对」排成「看得顺」）
 
@@ -468,7 +482,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），433 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
+- `smoke.mjs`：本地验证（不启动宿主），442 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```

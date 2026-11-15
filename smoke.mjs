@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.19 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.19');
+  check('v0.9.20 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.20');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1919,6 +1919,26 @@ await (async () => {
       check('v0.9.19 runtime: the briefing renders at all', false, String(e));
     }
   }
+{
+  // ---- v0.9.20: header card + plain-language positioning ----
+  const c920 = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  const hStart920 = c920.indexOf('sticky 外壳');
+  const hEnd920 = c920.indexOf('读取失败', hStart920);
+  const headerSrc920 = hStart920 >= 0 && hEnd920 > hStart920 ? c920.slice(hStart920, hEnd920) : '';
+  check('v0.9.20 header slice was located', headerSrc920.length > 200, 'len=' + headerSrc920.length);
+  check('v0.9.20 header is a baseline card on the sticky shell', headerSrc920.includes('background: THEME.card') && headerSrc920.includes('borderRadius: THEME.radius') && headerSrc920.includes('padding: 16'));
+  check('v0.9.20 header card shares the briefing width cap', headerSrc920.includes('maxWidth: 880'));
+  check('v0.9.20 header is no longer a bare border strip', headerSrc920.length > 0 && !headerSrc920.includes('borderBottom:'));
+  const zh920 = JSON.parse(fs.readFileSync(path.join(here, 'locale', 'zh.json'), 'utf8'));
+  check('v0.9.20 zh description is a short positioning line', zh920.meta.description.length <= 64 && /管家/.test(zh920.meta.description) && /计划/.test(zh920.meta.description), 'len=' + zh920.meta.description.length);
+  check('v0.9.20 zh description is not the old feature dump', !/启动后诊断上次崩溃并点名病因、检查备份新鲜度/.test(zh920.meta.description));
+  const en920 = JSON.parse(fs.readFileSync(path.join(here, 'locale', 'en.json'), 'utf8'));
+  check('v0.9.20 en description mirrors the positioning', /steward/i.test(en920.meta.description) && /plan/i.test(en920.meta.description));
+  const pkg920 = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
+  check('v0.9.20 package description leads with positioning', /^Health steward/.test(pkg920.description) && /plan/i.test(pkg920.description), pkg920.description.slice(0, 40));
+  check('v0.9.20 README documents the header card and the rewrite', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.20（') >= 0);
+}
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
