@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.16 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.16');
+  check('v0.9.17 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.17');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1715,6 +1715,88 @@ await (async () => {
   check('runtime: ui.entry=right drops the left/main entries',
     !R.error && R.leftLive === 0, why);
 })();
+{
+  // — v0.9.17：三处自查 Bug（m14481「按建议执行」） —
+  const v917Index = fs.readFileSync(path.join(here, 'lib', 'index.js'), 'utf8');
+  const v917Client = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  const v917Report = fs.readFileSync(path.join(here, 'lib', 'report.js'), 'utf8');
+  const NL17 = String.fromCharCode(10);
+
+  // #1 磁盘裁剪 + 精简返回体
+  check('v0.9.17 #1: duty ledger has a disk cap', v917Index.includes('const DUTY_DISK_CAP = 2000;'));
+  check('v0.9.17 #1: trimDutyLog reads and rewrites the ledger', /async function trimDutyLog\(\)/.test(v917Index) && v917Index.includes('io.readText(files.duty)') && v917Index.includes('io.writeText(files.duty'));
+  const rdStart17 = v917Index.indexOf('async function runDuty(');
+  const rdEnd17 = v917Index.indexOf('const hub = createActionHub(', rdStart17);
+  const rdBody17 = rdStart17 >= 0 && rdEnd17 > rdStart17 ? v917Index.slice(rdStart17, rdEnd17) : '';
+  check('v0.9.17 #1: runDuty trims the ledger after appending', rdBody17.includes('await trimDutyLog()'));
+  check('v0.9.17 #1: dutySnapshot returns only the last 5 log lines plus a total', v917Index.includes('log: log.slice(-5)') && v917Index.includes('logTotal: log.length'));
+  const tdStart17 = v917Index.indexOf('async function trimDutyLog(');
+  const tdEnd17 = v917Index.indexOf('async function runDuty(', tdStart17);
+  const tdSrc17 = tdStart17 >= 0 && tdEnd17 > tdStart17 ? v917Index.slice(tdStart17, tdEnd17) : '';
+  const buildTrim17 = (n) => {
+    let written = null;
+    const ioStub = {
+      readText: async () => Array.from({ length: n }, (_, i) => JSON.stringify({ at: 't' + i, state: 'observe-only' })).join(NL17) + NL17,
+      writeText: async (_f, t) => { written = t; },
+    };
+    return { ioStub, getWritten: () => written };
+  };
+  const big17 = buildTrim17(2500);
+  let trimFnBig = null;
+  try { trimFnBig = Function('io', 'files', 'DUTY_DISK_CAP', tdSrc17 + NL17 + 'return trimDutyLog;')(big17.ioStub, { duty: 'duty.jsonl' }, 2000); } catch (e) { /* 让它红 */ }
+  if (trimFnBig) await trimFnBig();
+  const bigWritten = big17.getWritten();
+  check('v0.9.17 #1 runtime: 2500 lines are trimmed down to the cap 2000', !!bigWritten && bigWritten.split(NL17).filter(Boolean).length === 2000, String(bigWritten && bigWritten.length));
+  let bigLast = null;
+  try { bigLast = JSON.parse(bigWritten.split(NL17).filter(Boolean).slice(-1)[0]).at; } catch (e) { /* 让它红 */ }
+  check('v0.9.17 #1 runtime: trimming keeps the newest entries', bigLast === 't2499', String(bigLast));
+  const small17 = buildTrim17(10);
+  let trimFnSmall = null;
+  try { trimFnSmall = Function('io', 'files', 'DUTY_DISK_CAP', tdSrc17 + NL17 + 'return trimDutyLog;')(small17.ioStub, { duty: 'duty.jsonl' }, 2000); } catch (e) { /* 让它红 */ }
+  if (trimFnSmall) await trimFnSmall();
+  check('v0.9.17 #1 runtime: a ledger under the cap is not rewritten', small17.getWritten() === null);
+
+  // #2 宿主版本未知时升级风险不许降级成 low
+  check('v0.9.17 #2: resolvedHostVersion also probes dsh-base', v917Report.includes('|| hostVersionFromBase(paths, io)'));
+  check('v0.9.17 #2: analyzeUpgrades refuses to call an unknown host low', v917Report.includes('宿主版本未确定，无法核对 engines.dsh 门槛'));
+  const AU17 = analyzeUpgrades;
+  const unknownHost17 = AU17([{ name: 'dsh-x', installed: '1.0.0', latest: '2.0.0' }], { 'dsh-x': { latest: '2.0.0', versions: ['1.0.0', '2.0.0'], engines: { dsh: '^0.3.0' } } }, null);
+  check('v0.9.17 #2 runtime: unknown host + engines.dsh is medium, not low', unknownHost17.rows[0].risk === 'medium', JSON.stringify(unknownHost17.rows[0]));
+  check('v0.9.17 #2 runtime: the reason tells the user to confirm the host first', unknownHost17.rows[0].reasons.join(' ').includes('先确认宿主版本'), JSON.stringify(unknownHost17.rows[0].reasons));
+  const noEngine17 = AU17([{ name: 'dsh-w', installed: '1.0.0', latest: '1.0.1' }], { 'dsh-w': { latest: '1.0.1', versions: ['1.0.0', '1.0.1'] } }, null);
+  check('v0.9.17 #2 runtime: unknown host without engines.dsh stays low', noEngine17.rows[0].risk === 'low', JSON.stringify(noEngine17.rows[0]));
+  check('v0.9.17 #2: compat evidence lists all three host-version sources', v917Report.includes('@deepseek-ai/dsh-base/package.json（与升级利弊分析共用）'));
+
+  // #3 当班失败必须可观测
+  check('v0.9.17 #3: runDuty failure writes an error ledger entry', /state: 'error'/.test(rdBody17) && /executed: 0/.test(rdBody17));
+  check('v0.9.17 #3: dutySnapshot exposes lastError', v917Index.includes('lastError: latest && latest.state ==='));
+  check('v0.9.17 #3: the panel status line turns critical on lastError', v917Client.includes('cache.duty.lastError ? C.critical : C.faint'));
+  const mkDutyRun17 = (opts) => {
+    const records = [];
+    const ioStub = { appendJsonl: async (_f, obj) => { records.push(obj); } };
+    const runStub = opts.throwErr ? async () => { throw new Error('采集器炸了'); } : async () => ({ report: { summary: { level: 'ok', counts: {} }, findings: [] } });
+    const src = 'let dutyRunning = false; let dutyLastAt = 0;' + NL17 + rdBody17 + NL17 + 'return { runDuty, peek: () => dutyRunning };';
+    let obj = null;
+    try {
+      obj = Function('run', 'lastReport', 'dutyBriefing', 'io', 'files', 'trimDutyLog', src)(runStub, null, dutyBriefing, ioStub, { duty: 'duty.jsonl' }, async () => {});
+    } catch (e) { obj = { error: String(e) }; }
+    return { obj, records };
+  };
+  const okRun = mkDutyRun17({ throwErr: false });
+  let okRes = null;
+  if (okRun.obj && okRun.obj.runDuty) okRes = await okRun.obj.runDuty('scheduled');
+  check('v0.9.17 #3 runtime: a healthy duty still returns its briefing', !!okRes && okRes.state === 'observe-only' && okRun.records.length === 1 && okRun.records[0].state === 'observe-only', JSON.stringify({ res: okRes && okRes.state, rec: okRun.records.length }));
+  check('v0.9.17 #3 runtime: dutyRunning is released by finally', !!okRun.obj && okRun.obj.peek() === false);
+  const badRun = mkDutyRun17({ throwErr: true });
+  let badRes = 'unset';
+  if (badRun.obj && badRun.obj.runDuty) badRes = await badRun.obj.runDuty('scheduled');
+  check('v0.9.17 #3 runtime: a failed duty writes an observable error ledger entry', badRes === null && badRun.records.length === 1 && badRun.records[0].state === 'error' && badRun.records[0].executed === 0, JSON.stringify({ res: badRes, rec: badRun.records }));
+  check('v0.9.17 #3 runtime: the error entry carries a human explanation', !!badRun.records[0] && typeof badRun.records[0].seen === 'string' && badRun.records[0].seen.includes('没能完成体检') && typeof badRun.records[0].action === 'string', JSON.stringify(badRun.records[0]));
+  check('v0.9.17 #3 runtime: dutyRunning is released even on failure', !!badRun.obj && badRun.obj.peek() === false);
+
+  // 版本与文档
+  check('v0.9.17 README documents the three fixes', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.17（') >= 0);
+}
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

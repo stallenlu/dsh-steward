@@ -1,6 +1,16 @@
 # dsh-steward — 智能管家（体检 + 授权执行）插件
 
-**状态：v0.9.16 已安装并热挂载（体检 + 授权执行 + 对话入口 + 设置项 + L0 当班）**
+**状态：v0.9.17（三处自查 Bug 修复，代码已落地待发版；本机当前仍跑 registry 0.9.16 tarball 副本）**
+
+## v0.9.17（三处自查 Bug：把「静默」修成「可观测」）
+
+这一版不加新职能，只修 v0.9.16 新代码引入、被「还有哪些没被发现的 Bug」自查揪出来的三个真问题：
+
+- **① 当班台账无上限增长**：`DUTY_LOG_CAP = 60` 以前只是「读取窗口」，磁盘上的 `duty.jsonl` 纯 `appendJsonl` 追加、永不回写，真机两天就涨到 527 KB / 307 行；而 `dutySnapshot()` 又把 60 条（约 63 KB）塞进 `ping` / `report` / `audit` 三次返回。现补 `DUTY_DISK_CAP = 2000` 的磁盘裁剪（`trimDutyLog()`，复用 `io.readText`/`io.writeText`，超线只留最近 2000 行），返回体也只回最近 5 条 `log` + `logTotal`（真实班数）+ `lastError`。面板报数改用 `logTotal`，不再把「只回 5 条」误当成「一共 5 班」。
+- **② 宿主版本未知时升级风险被降级成 low**：`resolvedHostVersion` 以前只认 crash 日志 `meta.app`，而 `collectCompat` 早就另有一个 `@deepseek-ai/dsh-base/package.json` 版本源；于是新装或日志轮转后 `hostVersion` 为 null，带 `engines.dsh` 门槛的包会被 `analyzeUpgrades` 静默判成「常规小步更新 / low」——恰恰在最该谨慎的场景给了最宽松结论，还与同一报告里 compat-check「宿主版本未确定，只列声明」口径相反。现让 `resolvedHostVersion` 也探 `dsh-base`（严格认包名，防止夹具冒充），`analyzeUpgrades` 在「宿主版本未确定且有 `engines.dsh`」时至少提到 medium 并写明「建议先确认宿主版本再升」，无 `engines.dsh` 的普通小步更新仍为 low。compat-check 的 detail / evidence / recommendation 同步补上第三源口径。
+- **③ 当班失败完全静默**：`runDuty` 的 `catch { return null; }` 只保证「不冒泡影响宿主」，却什么也不写——采集器持续抛错时面板照常显示「在线 / L0 当班」，与「会自己醒来」的承诺冲突。现 catch 里落一条 `state:'error'` / `executed:0` / 带「这一班没能完成体检」人话的台账，`dutySnapshot()` 暴露 `lastError`，overview 状态行在 `lastError` 时转成 critical 红字并说明原因。fail-soft 的代价必须可观测。
+
+三处都补了静态 + 运行期断言（含把 `trimDutyLog` / `runDuty` 源码抠出来用假 io 跑的健康与抛错两条路径），并做过反向验证：把修法撤掉，判据会变红。
 
 ## v0.9.16（L0 当班环：管家会自己醒来，但只观察、只把建议备好）
 
@@ -431,7 +441,7 @@ v0.7 给这个输入框加了「模型理解」：可选的第二通话方式，
 - `lib/brain.js`：v0.7 模型理解层。把一句话交给宿主 `llm` 服务，把模型输出归一成与 `intent.js` **完全同形状**的意图；JSON 抽取容错（容忍围栏与前后废话），各字段走白名单校验，任何不合规都降级为 clarify。**只翻译，不执行。**
 - `lib/index.js`：host（路由 + `dsh_steward_report` / `dsh_steward_act` 两个工具 + 事件订阅 + boot 后自动体检 + systemPrompt 注入）。
 - `lib/client.js`：client（`__ModuleLoader__.load` + 三 Tab 面板 + 动作卡 + 侧栏/右侧栏入口，全内联样式）。
-- `smoke.mjs`：本地验证（不启动宿主），379 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
+- `smoke.mjs`：本地验证（不启动宿主），401 项断言（另含右侧栏 tab 正文修复的静态与运行期 harness 判据）（含打包自检、时间戳、配色、「延迟注册」、L0 当班环、白色按钮回归、升级利弊分析与免费通道运行期体检等静态与运行期判据）。
 
 ## 本地验证（不装、不重启）
 ```
