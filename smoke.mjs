@@ -1544,7 +1544,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.17 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.17');
+  check('v0.9.18 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.18');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -1797,6 +1797,61 @@ await (async () => {
   // 版本与文档
   check('v0.9.17 README documents the three fixes', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.17（') >= 0);
 }
+  // —— v0.9.18：单条展开/收起闭环（静态 + 运行期）——
+  {
+    const v918 = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+    const NL18 = String.fromCharCode(10);
+    check('v0.9.18: per-group expandedGroups state is gone', !v918.includes('expandedGroups') && !v918.includes('setExpandedGroups'));
+    check('v0.9.18: open/close state is keyed per item', v918.includes('const [openItems, setOpenItems]') && v918.includes('const itemKey = (f, i)'));
+    check('v0.9.18: toggleItem flips both ways (real close loop)', v918.includes('[key]: !m[key]'));
+    check('v0.9.18: group header is an explicit batch action', v918.includes('setGroupOpen(list, !allOpen)') && v918.includes('全部展开 ⌄') && v918.includes('全部收起 ⌃'));
+    check('v0.9.18: Finding branches on expanded, not compact', v918.includes('const open = props.expanded === true;') && v918.includes('if (!open) {'));
+    check('v0.9.18: the expanded title row closes on click', v918.includes("title: '点击收起这一条的详情'") && v918.includes('收起 ⌃'));
+    check('v0.9.18: no group is force-opened by default (severe included)', !v918.includes("label === '严重'"));
+    check('v0.9.18: dead COLLAPSE_PREVIEW / canToggle removed', !v918.includes('COLLAPSE_PREVIEW') && !v918.includes('const canToggle'));
+    check('v0.9.18: legend explains per-item expand + close', v918.includes('点某一条展开详情、再点标题收起'));
+    check('v0.9.18: findingNode no longer takes a compact flag', !/findingNode\(f, i, (false|true), label\)/.test(v918));
+    check('v0.9.18 README documents the fix', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.18（') >= 0);
+
+    // 运行期：把真实的 itemKey / toggleItem / setGroupOpen 抠出来，配一个可变 state 跑一遍交互
+    const HSTART = "      const itemKey = (f, i) => (f.id || 'f') + '-' + i;";
+    const HEND = "      const [hidden, setHidden] = useState(cache.hidden);";
+    const hs = v918.indexOf(HSTART);
+    const he = hs >= 0 ? v918.indexOf(HEND, hs) : -1;
+    let state = {};
+    const setOpenItems = (u) => { state = typeof u === 'function' ? u(state) : u; };
+    let api = null;
+    if (hs >= 0 && he > hs) {
+      const helperSrc = v918.slice(hs, he);
+      try { api = Function('setOpenItems', helperSrc + NL18 + 'return { itemKey, toggleItem, setGroupOpen };')(setOpenItems); } catch (e) { /* 让它红 */ }
+    }
+    const runnable = !!(api && typeof api.itemKey === 'function' && typeof api.toggleItem === 'function' && typeof api.setGroupOpen === 'function');
+    const list10 = Array.from({ length: 10 }, (_, i) => ({ id: 'tip' + i }));
+    const openCount = () => Object.values(state).filter(Boolean).length;
+    check('v0.9.18 runtime: everything starts collapsed', runnable && openCount() === 0, JSON.stringify(state));
+    if (runnable) {
+      const k0 = api.itemKey(list10[0], 0);
+      api.toggleItem(k0);
+      check('v0.9.18 runtime: one click opens exactly ONE item (not all 10)', openCount() === 1 && state[k0] === true, JSON.stringify(state));
+      api.toggleItem(k0);
+      check('v0.9.18 runtime: clicking the same item again closes it (close loop)', openCount() === 0 && state[k0] === false, JSON.stringify(state));
+      api.toggleItem(api.itemKey(list10[0], 0));
+      api.toggleItem(api.itemKey(list10[2], 2));
+      check('v0.9.18 runtime: different items are independent', openCount() === 2 && state[api.itemKey(list10[1], 1)] !== true, JSON.stringify(state));
+      state = {};
+      api.setGroupOpen(list10, true);
+      check('v0.9.18 runtime: only the explicit batch opens all ten', openCount() === 10, JSON.stringify(state));
+      api.setGroupOpen(list10, false);
+      check('v0.9.18 runtime: the batch can also collapse all ten', openCount() === 0, JSON.stringify(state));
+    } else {
+      check('v0.9.18 runtime: one click opens exactly ONE item (not all 10)', false, 'harness not runnable');
+      check('v0.9.18 runtime: clicking the same item again closes it (close loop)', false, 'harness not runnable');
+      check('v0.9.18 runtime: different items are independent', false, 'harness not runnable');
+      check('v0.9.18 runtime: only the explicit batch opens all ten', false, 'harness not runnable');
+      check('v0.9.18 runtime: the batch can also collapse all ten', false, 'harness not runnable');
+    }
+  }
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
