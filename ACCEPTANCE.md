@@ -85,13 +85,13 @@
 > 设计文档另存 Mnemon `42042339-cc9d-4ecb-8d71-dc3ade7dffdd`（与定稿 f7e5a482 并列保留，不覆盖）。
 > **2026-11-14 第二补记（并入未发布的 0.9.16，不升号）**：修右侧栏「智能管家」tab 点开后只剩标题、正文落到宿主兜底「这类内容还没有可用的查看方式。」（用户 m13878 截图）。根因：ui.entry 为 right 时 apply() 先挂 both、异步读到设置再挂 right，第二次 disposeAllNow() 把刚注册的 sidebar.right.pane.tab 正文槽位拆掉；且正文注册嵌在 sidebarRightTabs 的 inject 回调里。改法：右侧整套按 rightMounted 幂等挂卸、正文槽位顶层独立注册、ToastHost 独立 ctx.effect 常驻（旧版被 disposeAllNow 误清，提醒一直没真正生效）。新增 A25 一行与 5 静态 + 4 运行期 harness 断言（运行期把真正 apply() body 抠出来跑一遍 both→right 重挂，数正文槽位存活次数）。基线 370 → **379 断言**。显示 / 生命周期 bug，不碰授权面、不碰数据层。
 
-> **2026-11-15 九次修订（v0.9.17 代码落地、待发版）：本地断言基线 379 → 401，新增 A26 一行。**
+> **2026-11-15 九次修订（v0.9.17 已发布并本机重装）：本地断言基线 379 → 401，新增 A26 一行。**
 > 用户 m14428「还有哪些没被发现的 Bug」自查揪出三个**都由 v0.9.16 L0 当班环新代码引入**的真问题，m14481「按建议执行」授权修：
 > - **① 当班台账无上限增长**：`DUTY_LOG_CAP=60` 只是读取窗口，磁盘 `duty.jsonl` 纯追加永不回写（真机两天 527 KB / 307 行），`dutySnapshot()` 还把 60 条约 63 KB 塞进 ping/report/audit 三次返回。补 `DUTY_DISK_CAP=2000` 磁盘裁剪 + 返回体只回最近 5 条 `log` + `logTotal` + `lastError`。
 > - **② 宿主版本未知时升级风险被降级成 low**：`resolvedHostVersion` 以前只认 crash `meta.app`，漏了 `collectCompat` 早有的 `@deepseek-ai/dsh-base/package.json` 源；新装 / 日志轮转后带 `engines.dsh` 门槛的包被静默判成 low，恰在最该谨慎处给最宽松结论，且与同报告 compat-check「只列声明」口径相反。现共用三源、`analyzeUpgrades` 在「宿主未确定且有门槛」时至少 medium 并写明「先确认宿主版本再升」。
 > - **③ 当班失败完全静默**：`catch { return null; }` 只保证不冒泡却什么也不写，面板照常显示「在线 / L0 当班」。现落 `state:'error'` 台账 + `lastError` + overview 红字。呼应第 50–52 行那句老判据：**fail-soft 是正确设计，但它的代价必须是可观测**——这次是同一句话在当班环里又犯了一次。
 >
-> 三处都补了静态 + 运行期断言（把 `trimDutyLog` / `runDuty` 源码抠出来用假 io 跑健康与抛错两条路径），关键判据反向验证过会红。**如实记一处不一致**：本机自 2026-11-14 起跑的是 registry **0.9.16 tarball 副本**，改源码树不自动生效；因此下面的基线快照仍是 0.9.16 的真机观测，**没有重采到 0.9.17**。0.9.17 须用户逐次授权 publish + bundled pnpm 重装后，才在 11-23 回看前重新观测一次并补记新数字。当前不 push、不 publish。
+> 三处都补了静态 + 运行期断言（把 `trimDutyLog` / `runDuty` 源码抠出来用假 io 跑健康与抛错两条路径），关键判据反向验证过会红。**同日 2026-11-15 已发版并本机重装生效**（用户 m14818「现在发版」授权）：npm `@sidady/dsh-steward@0.9.17` publish 并传播（registry `dist.integrity` 与本地 tarball 一致）、GitHub `15cdc63..fb0fadd` push、profile dep 0.9.16→0.9.17 + bundled pnpm 11.28.5 `--lockfile-only` → `--frozen-lockfile --ignore-scripts` 重装（759 顶层条目 1 换 1、安装副本 17 文件与 tarball BYTE_IDENTICAL、裸名目录不存在）、`set_bundle` false→true 热挂载。真机复核：ping `0.9.17` / `wiring.route:"registered"` / duty `log.len=5, logTotal=60, lastError=null`（新代码已生效）；report 14 条 findings / `errors=[]` / coverage 7/7 / `status:"ok"`；web-boot crash 日志仍 4 份。`list_bundles` 的 `source="@sidady/dsh-steward@0.9.17"` 是宿主认到 npm 形态新版的决定性证据。**下方基线快照表仍是 2026-11-12 针对 0.9.16 采集的固定对照点，不改写、不冒充 0.9.17 观测**；11-23 回看时按 A26 新判据另记一次真机数据。
 
 ## 基线快照（2026-11-12 22:33 采集（v0.9.16 重采），回看时用来对照）
 
@@ -101,7 +101,7 @@
 | npm 上的版本 | **`0.9.16`**（`dist-tags.latest`，2026-11-14 用户 m14210「要发」授权发布）——与本地、ping 三者一致；发布后从 registry 反装解包核对 17 文件 / `lib/` 8 个 JS / 8 个相对 import 全命中、在 tarball 里跑 `node smoke.mjs` **379 passed / 0 failed** |
 | GitHub | `stallenlu/dsh-steward` public，远端 `main` 已推到 `2d25b2e`（v0.9.16 全系列 6 个 commit，2026-11-14 push）；npm 0.9.16 同步 publish；`git status` 干净 |
 | 目录条目 | awesome-dsh-plugin PR **#14042 已 MERGED**（2026-11-11T17:47:32Z，mergeCommit `07de6ca0…`，`Submission gate` + `check` 全 pass）；main 分支已确认有 `data/plugins/stallenlu__dsh-steward.yml`（category dev，中英 description 齐全）。注意：`curl plugins.json` 曾被截断成假阴性，核对以 `gh api` 查 main 分支为准 |
-| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **401 passed / 0 failed**（源码树，v0.9.17 代码基线；本机真机仍跑 0.9.16 tarball，见第九次修订如实记）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
+| 本地验证 | 9 个 JS `node --check` 全过，`smoke.mjs` **401 passed / 0 failed**（v0.9.17；源码树与 0.9.17 tarball 内均全绿，本机亦已重装 0.9.17，见第九次修订）。演进：v0.9.15 基线 313 → L0 当班环 +24（含 1 条运行期求值判据、定时器生命周期判据）→ 337 → 白色按钮回归 +4 → 341 → 本轮（升级利弊分析 + 免费通道运行期体检）**+29 → 370** → 右侧栏 tab 正文修复 **+9 → 379** → v0.9.17 三处自查 Bug（磁盘裁剪 + 宿主版本三源 + 当班失败可观测）**+22 → 401**。关键判据反向验证过会红：L0 定时器 5 条、白按钮 4 条、升级利弊/免费通道 7 条、右侧栏 tab 正文 9 条、v0.9.17 三处（含 `trimDutyLog`/`runDuty` 运行期 harness）|
 | 体检结论 | `level=warning`，`counts={critical:0, warning:2, info:11, muted:0}`，`errors=[]`，共 **13** 条 findings（比 v0.9.15 多一条 `config-drift` info） |
 | `trendVerdict` | `{state:"stable", worseningStreak:0, text:"与上一次体检相比没有明显变化。"}` |
 | **`duty`（v0.9.16 新增）** | report / ping / audit 三处返回体都带：`mode:"L0"`、`observeOnly:true`、`intervalMinutes:10`、`running:false`、`log`（当班台账）、`suggestions`（预备建议） |
@@ -198,7 +198,7 @@
 
 | # | 检查项 | 数据源 | 打勾条件 |
 |---|---|---|---|
-| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前源码树基线 401 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字；注意本机真机若尚未发版重装，仍是 0.9.16 tarball 的 379） |
+| D1 | 依赖缺失只降级不崩溃 | `node smoke.mjs` 的 fail-soft 断言 | 回看当天跑一次 smoke，仍全绿（当前基线 401 passed / 0 failed）→ ✅（若期间又加断言，以当天全绿为准并记下新数字） |
 | D2 | 热挂载后落库一致 | profile `package.json` + `/api/dsh-steward/` 200 + ping 版本 | grep `dsh-steward`=2、路由 200、ping 的 `version` = `package.json` 的 `version` 三者一致 → ✅。**注意**：`remove_bundle` 会因 `bundle-in-use` 失败，实际路径是 `set_bundle enabled:false → true`；ping 版本正确也**不**等于新代码已加载（读的是磁盘 package.json），要看新文案是否出现 |
 | D3 | 可选数据源缺失不拖垮报告 | 报告 `status` 与 `coverage` | 缺一个可选源时 `status` 仍是 `ok`、只在 `coverage` 里记 `unavailable` → ✅ |
 | D4 | 慢请求不会无限等待 | 面板发一次 `model-scan` | 服务端 3 路并发（12 探针最坏 ≈180 s），前端 `report`/`model-scan` 预算 240 s、普通动作 30 s。若面板转圈超过 5 分钟仍无任何提示 → ❌ |
