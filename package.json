@@ -1,6 +1,6 @@
 {
   "name": "@sidady/dsh-steward",
-  "version": "0.9.23",
+  "version": "0.9.24",
   "type": "module",
   "description": "Health steward for DeepSeek Harness: it checks config, backups, crashes, updates and models, and shows a plan before any authorized action.",
   "keywords": [

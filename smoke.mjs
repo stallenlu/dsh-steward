@@ -60,6 +60,12 @@ const io = {
     if (file.endsWith('package.json')) return '{"name":"x"}';
     return { __error: 'unexpected read ' + file };
   },
+  // v0.9.24: the fixture zip is a real DCA1 container, so a fresh encrypted
+  // baseline stays info for the right reason - not because the check was skipped.
+  readHead(file) {
+    if (file.endsWith('.zip')) return Buffer.from([0x44, 0x43, 0x41, 0x31]);
+    return { __error: 'unexpected head ' + file };
+  },
 };
 const report = collectReport({
   now: new Date('2026-11-08T19:55:00Z'),
@@ -1290,8 +1296,8 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
     platform: 'win32', io: manyBakIo,
   });
   const manyBakFinding = manyBak.findings.find((f) => f.id === 'backup-freshness');
-  check('backup evidence states the full count', manyBakFinding && /等共 7 份/.test(String(manyBakFinding.evidence)), String(manyBakFinding && manyBakFinding.evidence));
-  check('backup data notes that evidence is capped', manyBakFinding && typeof manyBakFinding.data.countNote === 'string', JSON.stringify(manyBakFinding && manyBakFinding.data.countNote));
+  check('backup evidence states the count by container form', manyBakFinding && /容器 7/.test(String(manyBakFinding.evidence)), String(manyBakFinding && manyBakFinding.evidence));
+  check('backup data notes that details are capped', manyBakFinding && typeof manyBakFinding.data.countNote === 'string', JSON.stringify(manyBakFinding && manyBakFinding.data.countNote));
 
   // 采集告警里的 5 行上限也要明说，并且 data 要真给出全部。
   const noisyIo = {
@@ -1544,7 +1550,7 @@ check('the cause survives into finding data for the panel', !!liveCrash && liveC
   check('the duty briefing is computed in report.js, not in client.js', dutyReport.indexOf('export function dutyBriefing(') >= 0 && dutyClient.indexOf('function dutyBriefing(') < 0);
 
   // 版本与文档
-  check('v0.9.23 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.23');
+  check('v0.9.24 version is consistent', JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8')).version === '0.9.24');
   check('README documents the L0 duty loop', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.16（L0 当班环') >= 0);
 }
 
@@ -2054,6 +2060,62 @@ await (async () => {
       check('v0.9.23 runtime: Finding rendered at all', false, String(e));
     }
   }
+console.log('— v0.9.24: backup freshness judges the container form, not the file name —');
+(function () {
+  const rptSrc24 = fs.readFileSync(path.join(here, `lib/report.js`), 'utf8');
+  check('v0.9.24 report classifies containers by magic bytes', /function backupKind\(/.test(rptSrc24) && /head\[0\] === 0x44 && head\[1\] === 0x43 && head\[2\] === 0x41 && head\[3\] === 0x31/.test(rptSrc24), 'backupKind + DCA1 byte test');
+  check('v0.9.24 safeIo can read just the header', /readHead\(file, n\)/.test(rptSrc24) && /readSync\(fd/.test(rptSrc24));
+  check('v0.9.24 the old false-green sentence is gone', rptSrc24.indexOf('真实保护靠这份手动导出') < 0 && rptSrc24.indexOf('没有找到任何加密备份文件') < 0, 'no name-based wording left');
+  check('v0.9.24 plain exports cannot mark the baseline fresh', rptSrc24.indexOf('没有加密容器基线') >= 0 && rptSrc24.indexOf('不计入加密基线') >= 0, 'plain branch wording');
+
+  function bakIo(heads) {
+    return {
+      readDir(dir) {
+        if (dir.includes('exports')) return Object.keys(heads).concat(['.backup-notes.json']);
+        return io.readDir(dir);
+      },
+      stat(file) {
+        const hit = Object.keys(heads).find((k) => file.endsWith(k));
+        if (hit) return { isFile: () => true, size: 1000, mtime: heads[hit].mtime };
+        return io.stat(file);
+      },
+      readHead(file) {
+        const hit = Object.keys(heads).find((k) => file.endsWith(k));
+        if (!hit) return io.readHead(file, 4);
+        return heads[hit].magic === 'container' ? Buffer.from([0x44, 0x43, 0x41, 0x31])
+          : heads[hit].magic === 'plain' ? Buffer.from([0x50, 0x4b, 0x03, 0x04])
+          : { __error: 'unreadable' };
+      },
+      readText(file) { return io.readText(file); },
+    };
+  }
+  function bakReport(heads) {
+    return collectReport({
+      now: new Date('2026-11-16T02:00:00Z'), bootedAt: new Date('2026-11-16T00:00:00Z'),
+      env: { APPDATA: 'C:\\Users\\demo\\AppData\\Roaming', DSH_HOME: 'C:\\Users\\demo\\.dsh' },
+      platform: 'win32', io: bakIo(heads),
+    }).findings.find((f) => f.id === 'backup-freshness');
+  }
+  const D7 = new Date('2026-11-09T02:00:00Z');   // 7 days before now
+  const D0 = new Date('2026-11-16T01:00:00Z');   // today
+
+  const mixed = bakReport({ 'enc-old.zip': { magic: 'container', mtime: D7 }, 'plain-a.zip': { magic: 'plain', mtime: D0 }, 'plain-b.zip': { magic: 'plain', mtime: D0 } });
+  check('v0.9.24 a newer plain export does NOT reset the baseline age', mixed && mixed.data.latestAgeDays === 7, JSON.stringify(mixed && mixed.data.latestAgeDays));
+  check('v0.9.24 mixed kinds are counted separately', mixed && mixed.data.containerCount === 1 && mixed.data.plainCount === 2, JSON.stringify(mixed && [mixed.data.containerCount, mixed.data.plainCount]));
+  check('v0.9.24 the plain exports are named in the detail', /另有 2 份明文/.test(String(mixed && mixed.detail)), String(mixed && mixed.detail).slice(0, 200));
+
+  const allPlain = bakReport({ 'p1.zip': { magic: 'plain', mtime: D0 }, 'p2.zip': { magic: 'plain', mtime: D0 } });
+  check('v0.9.24 no container at all is a warning', allPlain && allPlain.severity === 'warning', allPlain && allPlain.severity);
+  check('v0.9.24 it says so in plain words', allPlain && /没有加密容器基线/.test(String(allPlain.title)), String(allPlain && allPlain.title));
+
+  const unread = bakReport({ 'x.zip': { magic: 'unknown', mtime: D0 } });
+  check('v0.9.24 unreadable headers report 无法判定, never 已备份', unread && /无法判定/.test(String(unread.title)) && unread.data.latestAgeDays === null, JSON.stringify(unread && [unread.title, unread.data.latestAgeDays]));
+
+  const freshEnc = bakReport({ 'enc.zip': { magic: 'container', mtime: D0 } });
+  check('v0.9.24 a genuinely fresh container stays info', freshEnc && freshEnc.severity === 'info' && freshEnc.data.latestAgeDays === 0, JSON.stringify(freshEnc && [freshEnc.severity, freshEnc.data.latestAgeDays]));
+
+  check('v0.9.24 README records the fix', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.24（') >= 0);
+})();
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
