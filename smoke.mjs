@@ -2153,6 +2153,91 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
   const capped2 = collectTidyingCandidates(many, { limit: 3 }, []);
   check('v0.9.25 explicit limit honored', capped2 && capped2.candidates.length === 3 && capped2.truncated === true && capped2.scanned === 27, JSON.stringify(capped2 && [capped2.candidates.length, capped2.truncated, capped2.scanned]));
 })();
+// — v0.9.25 Task 2: 报告集成 — workspace-tidying finding（TDD） —
+(() => {
+  const EXISTS_A = process.cwd();
+  const EXISTS_B = path.dirname(process.cwd());
+  const EXISTS_C = path.join(process.cwd(), 'lib');
+  const MISSING = path.join(process.cwd(), '__tidying_missing_ws__');
+  const staleMtime = new Date(Date.now() - 120 * 864e5);
+  const freshMtime = new Date(Date.now() - 2 * 864e5);
+  const encA = encodeWorkspaceDir(EXISTS_A);
+  const encB = encodeWorkspaceDir(EXISTS_B);
+  const encC = encodeWorkspaceDir(EXISTS_C);
+  const wsJson = (ids) => JSON.stringify({
+    unit: { name: 'workspace', version: 2 },
+    global: { initialized: true, defaultWorkspaceId: ids[0], workspaceIds: ids },
+    tables: { workspaces: {
+      'ws-arch': { path: EXISTS_A, title: '随手记', sessionIds: ['s1', 's2', 's3'] },
+      'ws-dup': { path: EXISTS_B, title: '设计稿 副本', sessionIds: ['s4'] },
+      'ws-gone': { path: MISSING, title: '已删项目', sessionIds: [] },
+      'ws-healthy': { path: EXISTS_C, title: '日常开发', sessionIds: ['s5'] },
+    } },
+  });
+  function tidyIo(json) {
+    const base = dataIo();
+    return {
+      readDir(dir) {
+        if (dir.includes(encC) || dir.includes(encA)) return [];
+        if (dir.includes(encB)) return ['huge.jsonl'];
+        return base.readDir(dir);
+      },
+      stat(file) {
+        if (file.includes(encC)) return { isFile: () => false, isDirectory: () => true, mtime: freshMtime };
+        if (file.includes(encA)) return { isFile: () => false, isDirectory: () => true, mtime: staleMtime };
+        if (file.includes(encB) && file.endsWith('huge.jsonl')) return { isFile: () => true, size: 300 * 1024 * 1024, mtime: freshMtime };
+        if (file.includes(encB)) return { isFile: () => false, isDirectory: () => true, mtime: freshMtime };
+        return base.stat(file);
+      },
+      readText(file) {
+        if (file.endsWith('workspace.json')) return json;
+        return base.readText(file);
+      },
+      readHead(file) { return base.readHead ? base.readHead(file) : { __error: 'no head' }; },
+    };
+  }
+  function tidyReport(ids) {
+    return collectReport({
+      now: new Date('2026-11-26T08:00:00Z'), bootedAt: new Date('2026-11-26T07:00:00Z'),
+      env: { APPDATA: 'C:\\Users\\demo\\AppData\\Roaming', DSH_HOME: 'C:\\Users\\demo\\.dsh' },
+      platform: 'win32', profileDirs: ['C:\\p'], io: tidyIo(wsJson(ids)),
+    });
+  }
+  const withCandidates = tidyReport(['ws-arch', 'ws-dup', 'ws-gone', 'ws-healthy']);
+  const finding = withCandidates.findings.find((f) => f.id === 'workspace-tidying');
+  check('v0.9.25 workspace-tidying finding present', !!finding, JSON.stringify(withCandidates.errors));
+
+  const cands = finding && finding.data && finding.data.candidates ? finding.data.candidates : [];
+  const byKey = (k) => cands.find((c) => c.key === k);
+  const arch = byKey('ws-arch');
+  const dup = byKey('ws-dup');
+  const gone = byKey('ws-gone');
+  check('v0.9.25 report finding reuses Task 1 candidates', arch && arch.kind === 'archivable' && arch.confidence === 'high'
+    && dup && dup.kind === 'pending' && dup.confidence === 'low'
+    && gone && gone.kind === 'garbage' && gone.confidence === 'high', JSON.stringify(cands));
+  check('v0.9.25 report finding excludes healthy workspace', cands.every((c) => c.key !== 'ws-healthy'), JSON.stringify(cands.map((c) => c.key)));
+  check('v0.9.25 finding data carries scanned/truncated', finding && finding.data.scanned === 4 && finding.data.truncated === false, JSON.stringify(finding && finding.data && [finding.data.scanned, finding.data.truncated]));
+  check('v0.9.25 finding is info even with candidates', finding && finding.severity === 'info' && finding.category === '工作区与会话', JSON.stringify(finding && [finding.severity, finding.category]));
+  check('v0.9.25 detail lists category · why · evidencePath', finding && cands.every((c) => String(finding.detail).includes(c.why + ' · ' + c.evidencePath)), String(finding && finding.detail).slice(0, 300));
+  check('v0.9.25 detail carries the human-decision boundary', finding && String(finding.detail).includes('需你本人确认，管家不删不移'), String(finding && finding.detail).slice(-200));
+  check('v0.9.25 recommendation points at the archive plugin', finding && String(finding.recommendation).includes('@michengai/dsh-archive-manager'), String(finding && finding.recommendation));
+  check('v0.9.25 finding stays non-actionable in scoring', finding && Array.isArray(finding.scoreReasons)
+    && !finding.scoreReasons.some((r) => String(r).includes('有直达处置动作')) && finding.score === 20, JSON.stringify(finding && [finding.score, finding.scoreReasons]));
+  check('v0.9.25 no coverage key added by the finding', withCandidates.coverage.sourcesTotal === 7 && !('workspaceTidying' in withCandidates.coverage), JSON.stringify(withCandidates.coverage));
+  check('v0.9.25 happy path adds no error entry', withCandidates.errors.every((e) => e.step !== 'workspace-tidying'), JSON.stringify(withCandidates.errors));
+
+  const zero = tidyReport(['ws-healthy']);
+  const zeroFinding = zero.findings.find((f) => f.id === 'workspace-tidying');
+  check('v0.9.25 zero-candidate finding still present', !!zeroFinding, JSON.stringify(zero.errors));
+  check('v0.9.25 zero candidates keep severity info', zeroFinding && zeroFinding.severity === 'info'
+    && Array.isArray(zeroFinding.data.candidates) && zeroFinding.data.candidates.length === 0
+    && zeroFinding.data.scanned === 1 && String(zeroFinding.detail).includes('需你本人确认，管家不删不移'),
+    JSON.stringify(zeroFinding && [zeroFinding.severity, zeroFinding.data.scanned, zeroFinding.detail]));
+
+  const t2src = fs.readFileSync(path.join(here, 'lib/report.js'), 'utf8');
+  check('v0.9.25 finding is wrapped in fail-soft try/catch', t2src.indexOf("step: 'workspace-tidying'") >= 0, 'error branch present');
+  check('v0.9.25 finding id is not in ACTIONABLE_IDS', !/const ACTIONABLE_IDS = new Set\(\[[^\]]*'workspace-tidying'/.test(t2src), 'ACTIONABLE_IDS unchanged');
+})();
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
