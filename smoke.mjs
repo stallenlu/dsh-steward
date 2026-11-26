@@ -7,6 +7,7 @@
  * (best-effort) to confirm the parser works on actual crash logs.
  */
 import { collectReport, parseBootFailure, dutyBriefing, analyzeUpgrades, collectFreeLaneHealth } from './lib/report.js';
+import * as reportNS from './lib/report.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -2115,6 +2116,42 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
   check('v0.9.24 a genuinely fresh container stays info', freshEnc && freshEnc.severity === 'info' && freshEnc.data.latestAgeDays === 0, JSON.stringify(freshEnc && [freshEnc.severity, freshEnc.data.latestAgeDays]));
 
   check('v0.9.24 README records the fix', fs.readFileSync(path.join(here, 'README.md'), 'utf8').indexOf('v0.9.24（') >= 0);
+})();
+// — v0.9.25 Task 1: 巡检层 — 纯元数据候选分类（TDD） —
+(() => {
+  const collectTidyingCandidates = reportNS.collectTidyingCandidates;
+  const workspaces = [
+    { id: 'ws-old-tiny', title: '随手记', path: 'E:/work/随手记', dirName: 'enc-old', exists: true, sessionCount: 3, bytes: 2048, ageDays: 120 },
+    { id: 'ws-orphan', title: '已删项目', path: 'E:/work/已删项目', dirName: 'enc-gone', exists: false, sessionCount: 0, bytes: 0, ageDays: null },
+    { id: 'ws-dup-huge', title: '设计稿 副本', path: 'E:/work/设计稿副本', dirName: 'enc-dup', exists: true, sessionCount: 12, bytes: 300 * 1024 * 1024, ageDays: 5 },
+    { id: 'ws-healthy', title: '日常开发', path: 'E:/work/日常开发', dirName: 'enc-ok', exists: true, sessionCount: 8, bytes: 24 * 1024 * 1024, ageDays: 4 },
+  ];
+  const errors = [];
+  const result = collectTidyingCandidates(workspaces, { limit: 20, now: new Date('2026-11-26T08:00:00Z') }, errors);
+  check('v0.9.25 scanned counts all inputs', result && result.scanned === 4, JSON.stringify(result && result.scanned));
+  check('v0.9.25 healthy workspace is not a candidate', result && result.candidates.every((c) => c.key !== 'ws-healthy'), JSON.stringify(result && result.candidates.map((c) => c.key)));
+  const byKey = (k) => result.candidates.find((c) => c.key === k);
+  const old = byKey('ws-old-tiny');
+  check('v0.9.25 stale+tiny → archivable/high', old && old.kind === 'archivable' && old.confidence === 'high', JSON.stringify(old));
+  const orphan = byKey('ws-orphan');
+  check('v0.9.25 orphan → garbage/high', orphan && orphan.kind === 'garbage' && orphan.confidence === 'high', JSON.stringify(orphan));
+  check('v0.9.25 orphan why is non-assertive', orphan && orphan.why.includes('目录已不存在，需你确认'), String(orphan && orphan.why));
+  check('v0.9.25 orphan evidencePath', orphan && orphan.evidencePath === 'enc-gone', String(orphan && orphan.evidencePath));
+  const dup = byKey('ws-dup-huge');
+  check('v0.9.25 huge+duplicate → pending/low', dup && dup.kind === 'pending' && dup.confidence === 'low', JSON.stringify(dup));
+  check('v0.9.25 every candidate has full shape', result.candidates.every((c) => ['key', 'kind', 'confidence', 'title', 'why', 'evidencePath', 'signals'].every((f) => f in c) && Array.isArray(c.signals)), JSON.stringify(result.candidates[0]));
+  check('v0.9.25 kind/confidence enums hold', result.candidates.every((c) => ['garbage', 'reusable', 'archivable', 'pending'].includes(c.kind) && ['high', 'low'].includes(c.confidence)), JSON.stringify(result.candidates.map((c) => [c.kind, c.confidence])));
+  check('v0.9.25 Chinese why sentence', result.candidates.every((c) => /[\u4e00-\u9fa5]/.test(c.why)), JSON.stringify(result.candidates.map((c) => c.why)));
+  check('v0.9.25 sorted by volume desc then staleness', result.candidates[0] && result.candidates[0].key === 'ws-dup-huge', JSON.stringify(result.candidates.map((c) => c.key)));
+
+  // Review Focus #2: scanned counts ALL inputs while candidates are capped.
+  const many = Array.from({ length: 27 }, (_, i) => ({ id: 'm' + i, title: '批次' + i, path: 'E:/w/' + i, dirName: 'd' + i, exists: true, sessionCount: 1, bytes: 1024, ageDays: 200 }));
+  const capped = collectTidyingCandidates(many, {}, []);
+  check('v0.9.25 default limit caps candidates at 20', capped && capped.candidates.length === 20, String(capped && capped.candidates.length));
+  check('v0.9.25 truncated true when capped', capped && capped.truncated === true, String(capped && capped.truncated));
+  check('v0.9.25 scanned reflects all 27 inputs despite cap', capped && capped.scanned === 27, String(capped && capped.scanned));
+  const capped2 = collectTidyingCandidates(many, { limit: 3 }, []);
+  check('v0.9.25 explicit limit honored', capped2 && capped2.candidates.length === 3 && capped2.truncated === true && capped2.scanned === 27, JSON.stringify(capped2 && [capped2.candidates.length, capped2.truncated, capped2.scanned]));
 })();
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
