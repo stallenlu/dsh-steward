@@ -2347,6 +2347,145 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
       && !t3block.includes('files.audit'), 'no side effects in harness block');
 }
 
+// — v0.9.25 Task 4: 决策台 TidyingPanel（静态 + new Function 运行期 harness）—
+{
+  const t4src = fs.readFileSync(path.join(here, 'lib', 'client.js'), 'utf8');
+  check('v0.9.25 T4 static: client.js defines TidyingPanel', /function TidyingPanel\(props\) \{/.test(t4src));
+  check('v0.9.25 T4 static: panel calls tidying-detail through call()', /call\('tidying-detail'/.test(t4src));
+  check('v0.9.25 T4 static: ACTION_FOR gains no workspace-tidying entry',
+    !/ACTION_FOR\['workspace-tidying'\]/.test(t4src)
+      && !/'workspace-tidying'\s*:\s*'/.test(t4src.slice(t4src.indexOf('const ACTION_FOR'), t4src.indexOf('async function call('))));
+  const t4ov = t4src.indexOf("tab === 'overview'");
+  const t4brief = t4src.indexOf('h(Briefing,', t4ov);
+  const t4panel = t4src.indexOf('h(TidyingPanel,', t4ov);
+  check('v0.9.25 T4 static: panel is wired into overview after Briefing',
+    t4ov >= 0 && t4brief > t4ov && t4panel > t4brief,
+    'overview=' + t4ov + ' briefing=' + t4brief + ' panel=' + t4panel);
+  check('v0.9.25 T4 static: panel is gated on the workspace-tidying finding',
+    /h\(TidyingPanel,[^)]*finding/.test(t4src), 'finding prop passed');
+
+  const T4S = 'function TidyingPanel(props) {';
+  const t4start = t4src.indexOf(T4S);
+  let t4end = -1;
+  if (t4start >= 0) {
+    const lines = t4src.slice(t4start).split('\n');
+    // 组件内所有块的闭合都缩进 4 空格，函数收尾是行首四空格的单行 '}'。
+    for (let i = 1; i < lines.length; i += 1) {
+      if (lines[i] === '    }') { t4end = t4start + lines.slice(0, i + 1).join('\n').length; break; }
+    }
+  }
+  const t4body = t4start >= 0 && t4end > t4start ? t4src.slice(t4start, t4end) : '';
+  check('v0.9.25 T4 harness: real TidyingPanel source is extractable',
+    t4body.includes('function TidyingPanel(props) {') && t4body.length > 200,
+    'start=' + t4start + ' end=' + t4end + ' len=' + t4body.length);
+
+  const t4calls = [];
+  let t4detailResponse = { ok: true, key: 'ws-a', reason: '深读后的中文理由', evidencePath: '/ws/a/evidence', deepRead: true, degraded: false };
+  const t4state = [];
+  let t4idx = 0;
+  function T4Badge(p) { return h4('Badge', p, ...((p && p.children) || [])); }
+  function T4TinyBtn(p) { return h4('button', p, ...Array.prototype.slice.call(arguments, 1)); }
+  // TinyBtn 在组件里是 h(TinyBtn, ...) 的函数标签，h4 认出后归一化成 DOM button。
+  T4TinyBtn.__t4button = true;
+  T4Badge.__t4badge = true;
+  function h4(tag, props) {
+    const kids = Array.prototype.slice.call(arguments, 2);
+    const norm = tag && tag.__t4button ? 'button'
+      : (tag && tag.__t4badge ? 'Badge'
+        : (typeof tag === 'function' ? (tag.name || 'fn') : tag));
+    return { tag: norm, props: props || {}, kids };
+  }
+  const C4 = { text: 'T', sub: 'S', faint: 'F', line: 'L', info: 'I', ok: 'O', warning: 'W', critical: 'X', fill: 'H', bg: 'B' };
+  const THEME4 = { radius: '12px', radiusSm: '8px', surface: 'SURF', gap: '12px', lineStrong: 'L2' };
+  let TidyingPanel4 = null;
+  let t4err = '';
+  try {
+    const NL4 = String.fromCharCode(10);
+    TidyingPanel4 = new Function('h', 'useState', 'useCallback', 'useEffect', 'useRef', 'Badge', 'TinyBtn', 'C', 'THEME', 'call',
+      t4body + NL4 + 'return TidyingPanel;')(
+      h4,
+      // 跨渲染持久的 state shim：点击后重渲染能看到 setDetails 的结果。
+      (initial) => {
+        const i = t4idx++;
+        if (!(i in t4state)) t4state[i] = typeof initial === 'function' ? initial() : initial;
+        return [t4state[i], (next) => { t4state[i] = typeof next === 'function' ? next(t4state[i]) : next; }];
+      },
+      (fn) => fn, () => {}, () => ({ current: null }), T4Badge, T4TinyBtn, C4, THEME4,
+      async (...args) => { t4calls.push(args); return t4detailResponse; },
+    );
+  } catch (e) {
+    t4err = String(e);
+  }
+  check('v0.9.25 T4 harness: TidyingPanel evaluates and returns a component',
+    typeof TidyingPanel4 === 'function', t4err || typeof TidyingPanel4);
+
+  function render4(finding) {
+    t4idx = 0;
+    return TidyingPanel4({ finding });
+  }
+  const t4finding = {
+    id: 'workspace-tidying', title: '工作区整理建议', severity: 'info',
+    detail: '· 垃圾 · 旧项目：服务端理由一 · /ws/a\n· 可归档 · 归档候选：服务端理由二 · /ws/b',
+    recommendation: '服务端处理建议：逐条核对后由你决定',
+    data: { candidates: [
+      { key: 'ws-a', kind: 'garbage', confidence: 'high', title: '旧项目', why: '服务端理由一', evidencePath: '/ws/a', signals: ['目录已不存在'] },
+      { key: 'ws-b', kind: 'archivable', confidence: 'low', title: '归档候选', why: '服务端理由二', evidencePath: '/ws/b', signals: ['长期未使用'] },
+    ] },
+  };
+  const flat4 = (n, out) => {
+    if (Array.isArray(n)) { n.forEach((x) => flat4(x, out)); return out; }
+    if (!n || typeof n !== 'object' || !n.kids) return out;
+    out.push(n); n.kids.forEach((x) => flat4(x, out)); return out;
+  };
+  const text4 = (n) => {
+    if (Array.isArray(n)) return n.map(text4).join('');
+    if (!n || typeof n !== 'object' || !n.kids) return typeof n === 'string' ? n : '';
+    return n.kids.map(text4).join('');
+  };
+  let t4tree = null;
+  try { t4tree = TidyingPanel4 && render4(t4finding); } catch (e) { t4err = String(e); }
+  check('v0.9.25 T4 runtime: panel renders all server reasons verbatim',
+    !!t4tree && text4(t4tree).includes('服务端理由一') && text4(t4tree).includes('服务端理由二'), t4err);
+  check('v0.9.25 T4 runtime: server-authored title and recommendation render',
+    !!t4tree && text4(t4tree).includes('工作区整理建议') && text4(t4tree).includes('服务端处理建议'), t4err);
+  const t4flat0 = t4tree ? flat4(t4tree, []) : [];
+  const t4badges = t4flat0.filter((n) => n.tag === 'Badge');
+  check('v0.9.25 T4 runtime: category badges use server words from detail, not client labels',
+    t4badges.length === 2 && text4(t4badges[0]) === '垃圾' && text4(t4badges[1]) === '可归档',
+    JSON.stringify(t4badges.map(text4)));
+  const t4btn = t4flat0.filter((n) => n.tag === 'button' && text4(n) === '查看详情')[0] || null;
+  check('v0.9.25 T4 runtime: each row carries a 查看详情 button', !!t4btn, t4err);
+  check('v0.9.25 T4 runtime: no plan/execute/audit from the panel source',
+    !/call\('plan'|call\('execute'|hub\.plan|hub\.execute/.test(t4body), 'harness body has no side effects');
+
+  if (t4btn && typeof t4btn.props.onClick === 'function') {
+    await t4btn.props.onClick();
+    check('v0.9.25 T4 runtime: click calls tidying-detail with the row key',
+      t4calls.length === 1 && t4calls[0][0] === 'tidying-detail'
+        && t4calls[0][1] && t4calls[0][1].key === 'ws-a', JSON.stringify(t4calls));
+    let t4tree2 = null;
+    try { t4tree2 = render4(t4finding); } catch (e) { t4err = String(e); }
+    const t4text2 = t4tree2 ? text4(t4tree2) : '';
+    check('v0.9.25 T4 runtime: result shows server reason + evidence path inline',
+      t4text2.includes('深读后的中文理由') && t4text2.includes('/ws/a/evidence'), t4err);
+
+    t4calls.length = 0;
+    t4detailResponse = { ok: true, key: 'ws-a', reason: '未读到内容，需你本人确认', evidencePath: '/ws/a', deepRead: false, degraded: true };
+    await t4btn.props.onClick();
+    let t4tree3 = null;
+    try { t4tree3 = render4(t4finding); } catch (e) { t4err = String(e); }
+    check('v0.9.25 T4 runtime: degraded:true shows 未读到内容',
+      !!t4tree3 && text4(t4tree3).includes('未读到内容'), t4err);
+    check('v0.9.25 T4 runtime: deep read never calls plan/execute',
+      t4calls.every((c) => c[0] === 'tidying-detail'), JSON.stringify(t4calls));
+  } else {
+    check('v0.9.25 T4 runtime: click calls tidying-detail with the row key', false, t4err || 'no button');
+    check('v0.9.25 T4 runtime: result shows server reason + evidence path inline', false, t4err || 'no button');
+    check('v0.9.25 T4 runtime: degraded:true shows 未读到内容', false, t4err || 'no button');
+    check('v0.9.25 T4 runtime: deep read never calls plan/execute', false, t4err || 'no button');
+  }
+}
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
