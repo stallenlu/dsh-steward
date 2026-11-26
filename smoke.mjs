@@ -2308,6 +2308,10 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
     check('v0.9.25 T3 runtime: service present -> reason composed from content, not a degrade',
       !!rGood && typeof rGood.reason === 'string' && rGood.reason.includes('3') && rGood.reason.length > 0,
       JSON.stringify(rGood && rGood.reason));
+    check('v0.9.25 T3 runtime: success reason says 预览 and not 正文',
+      !!rGood && typeof rGood.reason === 'string'
+        && rGood.reason.includes('已取得该会话预览') && !rGood.reason.includes('已取得该会话正文'),
+      JSON.stringify(rGood && rGood.reason));
     check('v0.9.25 T3 runtime: null service -> degraded true, deepRead false',
       !!rNull && rNull.deepRead === false && rNull.degraded === true, JSON.stringify(rNull));
     check('v0.9.25 T3 runtime: null service -> honest degrade reason',
@@ -2355,6 +2359,9 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
   check('v0.9.25 T4 static: ACTION_FOR gains no workspace-tidying entry',
     !/ACTION_FOR\['workspace-tidying'\]/.test(t4src)
       && !/'workspace-tidying'\s*:\s*'/.test(t4src.slice(t4src.indexOf('const ACTION_FOR'), t4src.indexOf('async function call('))));
+  const t4hintLine = t4src.split('\n').filter((l) => l.indexOf("groupBlock('提示'") >= 0)[0] || '';
+  check('v0.9.25 T4 static: generic 提示 group excludes workspace-tidying (dedupe)',
+    t4hintLine.indexOf("f.id !== 'workspace-tidying'") >= 0, t4hintLine.trim());
   const t4ov = t4src.indexOf("tab === 'overview'");
   const t4brief = t4src.indexOf('h(Briefing,', t4ov);
   const t4panel = t4src.indexOf('h(TidyingPanel,', t4ov);
@@ -2463,6 +2470,9 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
     check('v0.9.25 T4 runtime: click calls tidying-detail with the row key',
       t4calls.length === 1 && t4calls[0][0] === 'tidying-detail'
         && t4calls[0][1] && t4calls[0][1].key === 'ws-a', JSON.stringify(t4calls));
+    check('v0.9.25 T4 runtime: click forwards candidate evidencePath, not the key',
+      t4calls.length === 1 && !!t4calls[0][1] && t4calls[0][1].evidencePath === '/ws/a',
+      JSON.stringify(t4calls));
     let t4tree2 = null;
     try { t4tree2 = render4(t4finding); } catch (e) { t4err = String(e); }
     const t4text2 = t4tree2 ? text4(t4tree2) : '';
