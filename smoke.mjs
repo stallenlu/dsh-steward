@@ -2238,6 +2238,115 @@ console.log('— v0.9.24: backup freshness judges the container form, not the fi
   check('v0.9.25 finding is wrapped in fail-soft try/catch', t2src.indexOf("step: 'workspace-tidying'") >= 0, 'error branch present');
   check('v0.9.25 finding id is not in ACTIONABLE_IDS', !/const ACTIONABLE_IDS = new Set\(\[[^\]]*'workspace-tidying'/.test(t2src), 'ACTIONABLE_IDS unchanged');
 })();
+
+// — v0.9.25 Task 3: 深读 action 的运行期 harness（抠真实 service-call 代码 + 假 ctx）—
+{
+  const t3idx = fs.readFileSync(path.join(here, 'lib', 'index.js'), 'utf8');
+  const T3S = '// === TIDYING_DETAIL_HARNESS_START ===';
+  const T3E = '// === TIDYING_DETAIL_HARNESS_END ===';
+  const t3start = t3idx.indexOf(T3S);
+  const t3end = t3idx.indexOf(T3E);
+  const t3block = t3start >= 0 && t3end > t3start ? t3idx.slice(t3start, t3end) : '';
+  check('v0.9.25 T3 harness: real getService + deep-read block is extractable',
+    t3block.includes('function getService(') && t3block.includes('deepReadTidyingCandidate'),
+    'start=' + t3start + ' end=' + t3end);
+
+  let t3DeepRead = null;
+  let t3HarnessError = '';
+  try {
+    const t3make = new Function(t3block + String.fromCharCode(10) + 'return deepReadTidyingCandidate;');
+    t3DeepRead = t3make();
+    check('v0.9.25 T3 harness: deepReadTidyingCandidate runs from extracted source',
+      typeof t3DeepRead === 'function', typeof t3DeepRead);
+  } catch (e) {
+    t3HarnessError = String(e);
+    check('v0.9.25 T3 harness: deepReadTidyingCandidate runs from extracted source', false, t3HarnessError);
+  }
+
+  if (typeof t3DeepRead === 'function') {
+    const t3calls = { preview: 0, previewThrow: 0, getKeys: [] };
+    const t3ServiceCtx = {
+      get: (k) => {
+        t3calls.getKeys.push(k);
+        if (k === 'workspaceRegistry') return {
+          previewSessionContent: async (input) => {
+            t3calls.preview += 1;
+            return { key: input && input.key, messageCount: 3, excerpt: '正文摘要' };
+          },
+        };
+        return null;
+      },
+    };
+    const t3NullCtx = {
+      get: (k) => { t3calls.getKeys.push(k); return null; },
+    };
+    const t3ThrowCtx = {
+      get: (k) => {
+        t3calls.getKeys.push(k);
+        if (k === 'workspaceRegistry') return {
+          previewSessionContent: async () => { t3calls.previewThrow += 1; throw new Error('service exploded'); },
+        };
+        return null;
+      },
+    };
+
+    let rGood, rNull, rThrow;
+    let t3Escaped = false;
+    try {
+      rGood = await t3DeepRead(t3ServiceCtx, 'ws-good', '/path/ws-good');
+      rNull = await t3DeepRead(t3NullCtx, 'ws-null', '/path/ws-null');
+      rThrow = await t3DeepRead(t3ThrowCtx, 'ws-throw', '/path/ws-throw');
+    } catch (e) {
+      t3Escaped = true;
+      t3HarnessError = String(e);
+    }
+    check('v0.9.25 T3 runtime: no exception escapes any of the three paths',
+      !t3Escaped, t3HarnessError);
+
+    check('v0.9.25 T3 runtime: service present -> deepRead true',
+      !!rGood && rGood.deepRead === true && rGood.degraded === false, JSON.stringify(rGood));
+    check('v0.9.25 T3 runtime: service present -> reason composed from content, not a degrade',
+      !!rGood && typeof rGood.reason === 'string' && rGood.reason.includes('3') && rGood.reason.length > 0,
+      JSON.stringify(rGood && rGood.reason));
+    check('v0.9.25 T3 runtime: null service -> degraded true, deepRead false',
+      !!rNull && rNull.deepRead === false && rNull.degraded === true, JSON.stringify(rNull));
+    check('v0.9.25 T3 runtime: null service -> honest degrade reason',
+      !!rNull && rNull.reason === '未读到内容，需你本人确认', JSON.stringify(rNull && rNull.reason));
+    check('v0.9.25 T3 runtime: throwing method -> degraded true, deepRead false, no throw',
+      !!rThrow && rThrow.deepRead === false && rThrow.degraded === true, JSON.stringify(rThrow));
+    check('v0.9.25 T3 runtime: throwing method -> honest degrade reason',
+      !!rThrow && rThrow.reason === '未读到内容，需你本人确认', JSON.stringify(rThrow && rThrow.reason));
+
+    const t3reasons = [rGood && rGood.reason, rNull && rNull.reason, rThrow && rThrow.reason];
+    check('v0.9.25 T3 runtime: NO reason in ANY path claims 已读 or 已核对',
+      t3reasons.every((r) => typeof r === 'string' && !r.includes('已读') && !r.includes('已核对')),
+      JSON.stringify(t3reasons));
+
+    check('v0.9.25 T3 runtime: the workspaceRegistry seam is actually attempted (not dead)',
+      t3calls.getKeys.filter((k) => k === 'workspaceRegistry').length === 3
+        && t3calls.preview === 1 && t3calls.previewThrow === 1, JSON.stringify(t3calls));
+  } else {
+    check('v0.9.25 T3 runtime: no exception escapes any of the three paths', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: service present -> deepRead true', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: service present -> reason composed from content, not a degrade', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: null service -> degraded true, deepRead false', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: null service -> honest degrade reason', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: throwing method -> degraded true, deepRead false, no throw', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: throwing method -> honest degrade reason', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: NO reason in ANY path claims 已读 or 已核对', false, t3HarnessError);
+    check('v0.9.25 T3 runtime: the workspaceRegistry seam is actually attempted (not dead)', false, t3HarnessError);
+  }
+
+  check('v0.9.25 T3 action branch dispatches tidying-detail through the seam',
+    /action === 'tidying-detail'/.test(t3idx)
+      && /deepReadTidyingCandidate\(ctx,/.test(t3idx)
+      && /getService\(ctx, 'workspaceRegistry'\)/.test(t3block),
+    'action branch / helper call / seam lookup');
+  check('v0.9.25 T3 action never calls plan/execute/audit from the deep-read helper',
+    !t3block.includes('hub.plan') && !t3block.includes('hub.execute')
+      && !t3block.includes('files.audit'), 'no side effects in harness block');
+}
+
 console.log('');
 console.log(`RESULT: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
